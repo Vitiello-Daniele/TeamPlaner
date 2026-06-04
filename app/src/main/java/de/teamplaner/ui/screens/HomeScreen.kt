@@ -49,6 +49,12 @@ private enum class AppTab(val title: String) {
     Team("Team")
 }
 
+private enum class TeamView {
+    Overview,
+    Create,
+    Join
+}
+
 @Composable
 fun HomeScreen() {
     var currentView by remember { mutableStateOf(HomeView.Start) }
@@ -234,6 +240,7 @@ private fun LoggedInContent(
 ) {
     val displayName = name.ifBlank { "Kein Name angegeben" }
     var selectedTab by remember { mutableStateOf(AppTab.Profile) }
+    var teamName by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -273,6 +280,11 @@ private fun LoggedInContent(
                 modifier = Modifier.padding(innerPadding)
             )
             AppTab.Team -> TeamTabContent(
+                teamName = teamName,
+                onTeamCreate = { teamName = it },
+                onTeamJoin = { inviteCode ->
+                    teamName = "Team $inviteCode"
+                },
                 modifier = Modifier.padding(innerPadding)
             )
         }
@@ -298,17 +310,163 @@ private fun ProfileTabContent(
 }
 
 @Composable
-private fun TeamTabContent(modifier: Modifier = Modifier) {
+private fun TeamTabContent(
+    teamName: String,
+    onTeamCreate: (String) -> Unit,
+    onTeamJoin: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var teamView by remember { mutableStateOf(TeamView.Overview) }
+
+    when (teamView) {
+        TeamView.Overview -> TeamOverviewContent(
+            teamName = teamName,
+            onCreateClick = { teamView = TeamView.Create },
+            onJoinClick = { teamView = TeamView.Join },
+            modifier = modifier
+        )
+        TeamView.Create -> CreateTeamContent(
+            onSaveClick = { name ->
+                onTeamCreate(name)
+                teamView = TeamView.Overview
+            },
+            onBackClick = { teamView = TeamView.Overview },
+            modifier = modifier
+        )
+        TeamView.Join -> JoinTeamContent(
+            onJoinClick = { inviteCode ->
+                onTeamJoin(inviteCode)
+                teamView = TeamView.Overview
+            },
+            onBackClick = { teamView = TeamView.Overview },
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun TeamOverviewContent(
+    teamName: String,
+    onCreateClick: () -> Unit,
+    onJoinClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     ScreenContent(modifier = modifier) {
         Text(
             text = "Team",
             style = MaterialTheme.typography.headlineMedium
         )
+        if (teamName.isBlank()) {
+            Text(
+                text = "Du bist noch in keinem Team",
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Button(
+                onClick = onCreateClick,
+                modifier = Modifier
+                    .padding(top = 32.dp)
+                    .widthIn(max = 320.dp)
+                    .fillMaxWidth()
+            ) {
+                Text(text = "Team erstellen")
+            }
+            OutlinedButton(
+                onClick = onJoinClick,
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .widthIn(max = 320.dp)
+                    .fillMaxWidth()
+            ) {
+                Text(text = "Team beitreten")
+            }
+        } else {
+            Text(
+                text = teamName,
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
+}
+
+@Composable
+private fun CreateTeamContent(
+    onSaveClick: (String) -> Unit,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var teamName by remember { mutableStateOf("") }
+
+    ScreenContent(modifier = modifier) {
         Text(
-            text = "Noch kein Team vorhanden",
-            modifier = Modifier.padding(top = 12.dp),
-            style = MaterialTheme.typography.bodyLarge
+            text = "Team erstellen",
+            style = MaterialTheme.typography.headlineMedium
         )
+        AuthTextField(
+            value = teamName,
+            onValueChange = { teamName = it },
+            label = "Teamname",
+            modifier = Modifier.padding(top = 32.dp)
+        )
+        Button(
+            onClick = { onSaveClick(teamName) },
+            modifier = Modifier
+                .padding(top = 24.dp)
+                .widthIn(max = 320.dp)
+                .fillMaxWidth()
+        ) {
+            Text(text = "Speichern")
+        }
+        OutlinedButton(
+            onClick = onBackClick,
+            modifier = Modifier
+                .padding(top = 12.dp)
+                .widthIn(max = 320.dp)
+                .fillMaxWidth()
+        ) {
+            Text(text = "Zurück")
+        }
+    }
+}
+
+@Composable
+private fun JoinTeamContent(
+    onJoinClick: (String) -> Unit,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var inviteCode by remember { mutableStateOf("") }
+
+    ScreenContent(modifier = modifier) {
+        Text(
+            text = "Team beitreten",
+            style = MaterialTheme.typography.headlineMedium
+        )
+        AuthTextField(
+            value = inviteCode,
+            onValueChange = { inviteCode = it },
+            label = "Invite-Code",
+            modifier = Modifier.padding(top = 32.dp)
+        )
+        Button(
+            onClick = { onJoinClick(inviteCode) },
+            modifier = Modifier
+                .padding(top = 24.dp)
+                .widthIn(max = 320.dp)
+                .fillMaxWidth()
+        ) {
+            Text(text = "Beitreten")
+        }
+        OutlinedButton(
+            onClick = onBackClick,
+            modifier = Modifier
+                .padding(top = 12.dp)
+                .widthIn(max = 320.dp)
+                .fillMaxWidth()
+        ) {
+            Text(text = "Zurück")
+        }
     }
 }
 
