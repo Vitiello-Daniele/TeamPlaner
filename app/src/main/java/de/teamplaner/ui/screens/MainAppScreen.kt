@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import de.teamplaner.R
+import de.teamplaner.model.Team
 
 private enum class AppTab(val title: String) {
     Profile("Profil"),
@@ -33,7 +34,7 @@ fun MainAppScreen(
 ) {
     val displayName = name.ifBlank { "Kein Name angegeben" }
     var selectedTab by remember { mutableStateOf(AppTab.Profile) }
-    var teamName by remember { mutableStateOf("") }
+    var team by remember { mutableStateOf<Team?>(null) }
 
     Scaffold(
         topBar = {
@@ -73,13 +74,30 @@ fun MainAppScreen(
                 modifier = Modifier.padding(innerPadding)
             )
             AppTab.Team -> TeamScreen(
-                teamName = teamName,
-                onTeamCreate = { teamName = it },
+                team = team,
+                onTeamCreate = { teamName ->
+                    team = Team(
+                        name = teamName,
+                        inviteCode = createInviteCode(teamName)
+                    )
+                },
                 onTeamJoin = { inviteCode ->
-                    teamName = "Team $inviteCode"
+                    team = Team(
+                        name = "Team $inviteCode",
+                        inviteCode = inviteCode
+                    )
                 },
                 modifier = Modifier.padding(innerPadding)
             )
         }
     }
+}
+
+private fun createInviteCode(teamName: String): String {
+    val codeBase = teamName
+        .filter { it.isLetterOrDigit() }
+        .uppercase()
+        .take(4)
+
+    return codeBase.ifBlank { "TEAM" } + "01"
 }

@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import de.teamplaner.model.Team
 
 private enum class TeamView {
     Overview,
@@ -19,7 +20,7 @@ private enum class TeamView {
 
 @Composable
 fun TeamScreen(
-    teamName: String,
+    team: Team?,
     onTeamCreate: (String) -> Unit,
     onTeamJoin: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -28,7 +29,7 @@ fun TeamScreen(
 
     when (teamView) {
         TeamView.Overview -> TeamOverviewContent(
-            teamName = teamName,
+            team = team,
             onCreateClick = { teamView = TeamView.Create },
             onJoinClick = { teamView = TeamView.Join },
             modifier = modifier
@@ -54,7 +55,7 @@ fun TeamScreen(
 
 @Composable
 private fun TeamOverviewContent(
-    teamName: String,
+    team: Team?,
     onCreateClick: () -> Unit,
     onJoinClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -64,7 +65,7 @@ private fun TeamOverviewContent(
             text = "Team",
             style = MaterialTheme.typography.headlineMedium
         )
-        if (teamName.isBlank()) {
+        if (team == null) {
             Text(
                 text = "Du bist noch in keinem Team",
                 modifier = Modifier.fieldTopPadding(12),
@@ -84,7 +85,12 @@ private fun TeamOverviewContent(
             }
         } else {
             Text(
-                text = teamName,
+                text = team.name,
+                modifier = Modifier.fieldTopPadding(12),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = "Invite-Code: ${team.inviteCode}",
                 modifier = Modifier.fieldTopPadding(12),
                 style = MaterialTheme.typography.bodyLarge
             )
