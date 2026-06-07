@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
+import de.teamplaner.model.TeamEventType
 import de.teamplaner.model.TeamMember
 
 @Composable
@@ -28,9 +30,12 @@ fun EventScreen(
     team: Team?,
     events: List<TeamEvent>,
     onEventCreate: (TeamEvent) -> Unit,
+    onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var editedEvent by remember { mutableStateOf<TeamEvent?>(null) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -52,10 +57,22 @@ fun EventScreen(
         } else {
             EventForm(
                 team = team,
-                onEventCreate = onEventCreate
+                editedEvent = editedEvent,
+                onEventSave = { event ->
+                    val currentEditedEvent = editedEvent
+
+                    if (currentEditedEvent == null) {
+                        onEventCreate(event)
+                    } else {
+                        onEventUpdate(currentEditedEvent, event)
+                        editedEvent = null
+                    }
+                },
+                onCancelEdit = { editedEvent = null }
             )
             EventList(
                 events = events,
+                onEventEdit = { event -> editedEvent = event },
                 onEventRemove = onEventRemove
             )
         }
@@ -65,19 +82,32 @@ fun EventScreen(
 @Composable
 private fun EventForm(
     team: Team,
-    onEventCreate: (TeamEvent) -> Unit
+    editedEvent: TeamEvent?,
+    onEventSave: (TeamEvent) -> Unit,
+    onCancelEdit: () -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("") }
-    var location by remember { mutableStateOf("") }
-    var selectedMembers by remember(team) { mutableStateOf(team.members.toSet()) }
+    var title by remember(editedEvent) { mutableStateOf(editedEvent?.title.orEmpty()) }
+    var date by remember(editedEvent) { mutableStateOf(editedEvent?.date.orEmpty()) }
+    var time by remember(editedEvent) { mutableStateOf(editedEvent?.time.orEmpty()) }
+    var location by remember(editedEvent) { mutableStateOf(editedEvent?.location.orEmpty()) }
+    var eventType by remember(editedEvent) {
+        mutableStateOf(editedEvent?.type ?: TeamEventType.Training)
+    }
+    var selectedMembers by remember(team, editedEvent) {
+        mutableStateOf(editedEvent?.participants?.toSet() ?: team.members.toSet())
+    }
+
+    Text(
+        text = if (editedEvent == null) "Neuer Termin" else "Termin bearbeiten",
+        modifier = Modifier.fieldTopPadding(32),
+        style = MaterialTheme.typography.titleMedium
+    )
 
     AuthTextField(
         value = title,
         onValueChange = { title = it },
         label = "Titel",
-        modifier = Modifier.fieldTopPadding(32)
+        modifier = Modifier.fieldTopPadding(12)
     )
     AuthTextField(
         value = date,
@@ -96,6 +126,16 @@ private fun EventForm(
         onValueChange = { location = it },
         label = "Ort",
         modifier = Modifier.fieldTopPadding(12)
+    )
+
+    Text(
+        text = "Art",
+        modifier = Modifier.fieldTopPadding(24),
+        style = MaterialTheme.typography.titleMedium
+    )
+    EventTypeSelection(
+        selectedType = eventType,
+        onTypeSelect = { eventType = it }
     )
 
     Text(
@@ -122,8 +162,9 @@ private fun EventForm(
             val trimmedTitle = title.trim()
 
             if (trimmedTitle.isNotBlank()) {
-                onEventCreate(
+                onEventSave(
                     TeamEvent(
+                        type = eventType,
                         title = trimmedTitle,
                         date = date.trim(),
                         time = time.trim(),
@@ -135,12 +176,41 @@ private fun EventForm(
                 date = ""
                 time = ""
                 location = ""
+                eventType = TeamEventType.Training
                 selectedMembers = team.members.toSet()
             }
         },
         modifier = defaultActionModifier(topPadding = 24)
     ) {
-        Text(text = "Termin speichern")
+        Text(text = if (editedEvent == null) "Termin speichern" else "Aenderungen speichern")
+    }
+
+    if (editedEvent != null) {
+        OutlinedButton(
+            onClick = onCancelEdit,
+            modifier = defaultActionModifier(topPadding = 12)
+        ) {
+            Text(text = "Abbrechen")
+        }
+    }
+}
+
+@Composable
+private fun EventTypeSelection(
+    selectedType: TeamEventType,
+    onTypeSelect: (TeamEventType) -> Unit
+) {
+    Row(
+        modifier = defaultActionModifier(topPadding = 8)
+    ) {
+        TeamEventType.entries.forEach { type ->
+            FilterChip(
+                selected = selectedType == type,
+                onClick = { onTypeSelect(type) },
+                label = { Text(text = type.label) },
+                modifier = Modifier.padding(end = 8.dp)
+            )
+        }
     }
 }
 
@@ -168,6 +238,7 @@ private fun ParticipantRow(
 @Composable
 private fun EventList(
     events: List<TeamEvent>,
+    onEventEdit: (TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit
 ) {
     Text(
@@ -186,6 +257,7 @@ private fun EventList(
         events.forEach { event ->
             EventListItem(
                 event = event,
+                onEditClick = { onEventEdit(event) },
                 onRemoveClick = { onEventRemove(event) }
             )
         }
@@ -195,13 +267,19 @@ private fun EventList(
 @Composable
 private fun EventListItem(
     event: TeamEvent,
+    onEditClick: () -> Unit,
     onRemoveClick: () -> Unit
 ) {
     Column(
         modifier = defaultActionModifier(topPadding = 16)
     ) {
         Text(
+            text = event.type.label,
+            style = MaterialTheme.typography.labelLarge
+        )
+        Text(
             text = event.title,
+            modifier = Modifier.fieldTopPadding(4),
             style = MaterialTheme.typography.titleMedium
         )
         Text(
@@ -219,6 +297,12 @@ private fun EventListItem(
             modifier = Modifier.fieldTopPadding(4),
             style = MaterialTheme.typography.bodyMedium
         )
+        Button(
+            onClick = onEditClick,
+            modifier = defaultActionModifier(topPadding = 8)
+        ) {
+            Text(text = "Bearbeiten")
+        }
         OutlinedButton(
             onClick = onRemoveClick,
             modifier = defaultActionModifier(topPadding = 8)

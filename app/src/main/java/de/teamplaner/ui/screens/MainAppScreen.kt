@@ -134,6 +134,15 @@ fun MainAppScreen(
                 onEventCreate = { event ->
                     events = events + event
                 },
+                onEventUpdate = { oldEvent, newEvent ->
+                    val eventIndex = events.indexOf(oldEvent)
+
+                    if (eventIndex >= 0) {
+                        events = events.toMutableList().also {
+                            it[eventIndex] = newEvent
+                        }
+                    }
+                },
                 onEventRemove = { event ->
                     events = events - event
                 },
