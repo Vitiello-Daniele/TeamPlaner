@@ -20,12 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import de.teamplaner.R
 import de.teamplaner.model.Team
+import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
 import de.teamplaner.model.TeamRole
 
 private enum class AppTab(val title: String) {
     Profile("Profil"),
-    Team("Team")
+    Team("Team"),
+    Events("Termine")
 }
 
 @Composable
@@ -37,6 +39,7 @@ fun MainAppScreen(
     val displayName = name.ifBlank { "Kein Name angegeben" }
     var selectedTab by remember { mutableStateOf(AppTab.Profile) }
     var team by remember { mutableStateOf<Team?>(null) }
+    var events by remember { mutableStateOf(emptyList<TeamEvent>()) }
 
     Scaffold(
         topBar = {
@@ -122,6 +125,17 @@ fun MainAppScreen(
                             members = currentTeam.members - member
                         )
                     }
+                },
+                modifier = Modifier.padding(innerPadding)
+            )
+            AppTab.Events -> EventScreen(
+                team = team,
+                events = events,
+                onEventCreate = { event ->
+                    events = events + event
+                },
+                onEventRemove = { event ->
+                    events = events - event
                 },
                 modifier = Modifier.padding(innerPadding)
             )
