@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import de.teamplaner.R
 import de.teamplaner.model.Team
+import de.teamplaner.model.TeamMember
+import de.teamplaner.model.TeamRole
 
 private enum class AppTab(val title: String) {
     Profile("Profil"),
@@ -78,14 +80,48 @@ fun MainAppScreen(
                 onTeamCreate = { teamName ->
                     team = Team(
                         name = teamName,
-                        inviteCode = createInviteCode(teamName)
+                        inviteCode = createInviteCode(teamName),
+                        members = listOf(
+                            TeamMember(
+                                name = displayName,
+                                role = TeamRole.Trainer
+                            )
+                        )
                     )
                 },
                 onTeamJoin = { inviteCode ->
                     team = Team(
                         name = "Team $inviteCode",
-                        inviteCode = inviteCode
+                        inviteCode = inviteCode,
+                        members = listOf(
+                            TeamMember(
+                                name = displayName,
+                                role = TeamRole.Member
+                            )
+                        )
                     )
+                },
+                onMemberAdd = { memberName ->
+                    val currentTeam = team
+                    val trimmedName = memberName.trim()
+
+                    if (currentTeam != null && trimmedName.isNotBlank()) {
+                        team = currentTeam.copy(
+                            members = currentTeam.members + TeamMember(
+                                name = trimmedName,
+                                role = TeamRole.Member
+                            )
+                        )
+                    }
+                },
+                onMemberRemove = { member ->
+                    val currentTeam = team
+
+                    if (currentTeam != null && member.role != TeamRole.Trainer) {
+                        team = currentTeam.copy(
+                            members = currentTeam.members - member
+                        )
+                    }
                 },
                 modifier = Modifier.padding(innerPadding)
             )

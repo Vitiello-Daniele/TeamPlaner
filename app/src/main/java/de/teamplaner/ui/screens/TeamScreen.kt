@@ -1,5 +1,8 @@
 package de.teamplaner.ui.screens
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -9,8 +12,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import de.teamplaner.model.Team
+import de.teamplaner.model.TeamMember
+import de.teamplaner.model.TeamRole
+import androidx.compose.ui.unit.dp
 
 private enum class TeamView {
     Overview,
@@ -23,6 +30,8 @@ fun TeamScreen(
     team: Team?,
     onTeamCreate: (String) -> Unit,
     onTeamJoin: (String) -> Unit,
+    onMemberAdd: (String) -> Unit,
+    onMemberRemove: (TeamMember) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var teamView by remember { mutableStateOf(TeamView.Overview) }
@@ -32,6 +41,8 @@ fun TeamScreen(
             team = team,
             onCreateClick = { teamView = TeamView.Create },
             onJoinClick = { teamView = TeamView.Join },
+            onMemberAdd = onMemberAdd,
+            onMemberRemove = onMemberRemove,
             modifier = modifier
         )
         TeamView.Create -> CreateTeamContent(
@@ -58,8 +69,12 @@ private fun TeamOverviewContent(
     team: Team?,
     onCreateClick: () -> Unit,
     onJoinClick: () -> Unit,
+    onMemberAdd: (String) -> Unit,
+    onMemberRemove: (TeamMember) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var memberName by remember { mutableStateOf("") }
+
     ScreenContent(modifier = modifier) {
         Text(
             text = "Team",
@@ -94,6 +109,55 @@ private fun TeamOverviewContent(
                 modifier = Modifier.fieldTopPadding(12),
                 style = MaterialTheme.typography.bodyLarge
             )
+            Text(
+                text = "Mitglieder",
+                modifier = Modifier.fieldTopPadding(24),
+                style = MaterialTheme.typography.titleMedium
+            )
+            team.members.forEach { member ->
+                TeamMemberRow(
+                    member = member,
+                    onRemoveClick = { onMemberRemove(member) }
+                )
+            }
+            AuthTextField(
+                value = memberName,
+                onValueChange = { memberName = it },
+                label = "Mitgliedsname",
+                modifier = Modifier.fieldTopPadding(24)
+            )
+            Button(
+                onClick = {
+                    onMemberAdd(memberName)
+                    memberName = ""
+                },
+                modifier = defaultActionModifier(topPadding = 12)
+            ) {
+                Text(text = "Mitglied hinzufuegen")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeamMemberRow(
+    member: TeamMember,
+    onRemoveClick: () -> Unit
+) {
+    Row(
+        modifier = defaultActionModifier(topPadding = 8),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "${member.name} (${member.role.label})",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge
+        )
+        if (member.role != TeamRole.Trainer) {
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(onClick = onRemoveClick) {
+                Text(text = "Entfernen")
+            }
         }
     }
 }
