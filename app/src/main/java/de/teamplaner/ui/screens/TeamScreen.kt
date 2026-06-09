@@ -28,6 +28,7 @@ private enum class TeamView {
 @Composable
 fun TeamScreen(
     team: Team?,
+    canManageTeam: Boolean,
     onTeamCreate: (String) -> Unit,
     onTeamJoin: (String) -> Unit,
     onMemberAdd: (String) -> Unit,
@@ -39,6 +40,7 @@ fun TeamScreen(
     when (teamView) {
         TeamView.Overview -> TeamOverviewContent(
             team = team,
+            canManageTeam = canManageTeam,
             onCreateClick = { teamView = TeamView.Create },
             onJoinClick = { teamView = TeamView.Join },
             onMemberAdd = onMemberAdd,
@@ -67,6 +69,7 @@ fun TeamScreen(
 @Composable
 private fun TeamOverviewContent(
     team: Team?,
+    canManageTeam: Boolean,
     onCreateClick: () -> Unit,
     onJoinClick: () -> Unit,
     onMemberAdd: (String) -> Unit,
@@ -117,23 +120,26 @@ private fun TeamOverviewContent(
             team.members.forEach { member ->
                 TeamMemberRow(
                     member = member,
+                    canRemove = canManageTeam,
                     onRemoveClick = { onMemberRemove(member) }
                 )
             }
-            AuthTextField(
-                value = memberName,
-                onValueChange = { memberName = it },
-                label = "Mitgliedsname",
-                modifier = Modifier.fieldTopPadding(24)
-            )
-            Button(
-                onClick = {
-                    onMemberAdd(memberName)
-                    memberName = ""
-                },
-                modifier = defaultActionModifier(topPadding = 12)
-            ) {
-                Text(text = "Mitglied hinzufuegen")
+            if (canManageTeam) {
+                AuthTextField(
+                    value = memberName,
+                    onValueChange = { memberName = it },
+                    label = "Mitgliedsname",
+                    modifier = Modifier.fieldTopPadding(24)
+                )
+                Button(
+                    onClick = {
+                        onMemberAdd(memberName)
+                        memberName = ""
+                    },
+                    modifier = defaultActionModifier(topPadding = 12)
+                ) {
+                    Text(text = "Mitglied hinzufuegen")
+                }
             }
         }
     }
@@ -142,6 +148,7 @@ private fun TeamOverviewContent(
 @Composable
 private fun TeamMemberRow(
     member: TeamMember,
+    canRemove: Boolean,
     onRemoveClick: () -> Unit
 ) {
     Row(
@@ -153,7 +160,7 @@ private fun TeamMemberRow(
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge
         )
-        if (member.role != TeamRole.Trainer) {
+        if (canRemove && member.role != TeamRole.Trainer) {
             Spacer(modifier = Modifier.width(8.dp))
             OutlinedButton(onClick = onRemoveClick) {
                 Text(text = "Entfernen")

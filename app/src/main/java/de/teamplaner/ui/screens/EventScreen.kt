@@ -30,6 +30,8 @@ import de.teamplaner.model.TeilnahmeStatus
 @Composable
 fun EventScreen(
     team: Team?,
+    currentMember: TeamMember?,
+    canManageEvents: Boolean,
     events: List<TeamEvent>,
     onEventCreate: (TeamEvent) -> Unit,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
@@ -57,23 +59,27 @@ fun EventScreen(
                 style = MaterialTheme.typography.bodyLarge
             )
         } else {
-            EventForm(
-                team = team,
-                editedEvent = editedEvent,
-                onEventSave = { event ->
-                    val currentEditedEvent = editedEvent
+            if (canManageEvents) {
+                EventForm(
+                    team = team,
+                    editedEvent = editedEvent,
+                    onEventSave = { event ->
+                        val currentEditedEvent = editedEvent
 
-                    if (currentEditedEvent == null) {
-                        onEventCreate(event)
-                    } else {
-                        onEventUpdate(currentEditedEvent, event)
-                        editedEvent = null
-                    }
-                },
-                onCancelEdit = { editedEvent = null }
-            )
+                        if (currentEditedEvent == null) {
+                            onEventCreate(event)
+                        } else {
+                            onEventUpdate(currentEditedEvent, event)
+                            editedEvent = null
+                        }
+                    },
+                    onCancelEdit = { editedEvent = null }
+                )
+            }
             EventList(
                 events = events,
+                currentMember = currentMember,
+                canManageEvents = canManageEvents,
                 onEventUpdate = onEventUpdate,
                 onEventEdit = { event -> editedEvent = event },
                 onEventRemove = onEventRemove
@@ -247,6 +253,8 @@ private fun ParticipantRow(
 @Composable
 private fun EventList(
     events: List<TeamEvent>,
+    currentMember: TeamMember?,
+    canManageEvents: Boolean,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventEdit: (TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit
@@ -267,6 +275,8 @@ private fun EventList(
         events.forEach { event ->
             EventListItem(
                 event = event,
+                currentMember = currentMember,
+                canManageEvents = canManageEvents,
                 onStatusChange = { teilnahme, status ->
                     onEventUpdate(
                         event,
@@ -291,6 +301,8 @@ private fun EventList(
 @Composable
 private fun EventListItem(
     event: TeamEvent,
+    currentMember: TeamMember?,
+    canManageEvents: Boolean,
     onStatusChange: (Teilnahme, TeilnahmeStatus) -> Unit,
     onEditClick: () -> Unit,
     onRemoveClick: () -> Unit
@@ -337,20 +349,23 @@ private fun EventListItem(
             event.teilnahmen.forEach { teilnahme ->
                 TeilnahmeRow(
                     teilnahme = teilnahme,
+                    canEditStatus = canManageEvents || teilnahme.member == currentMember,
                     onStatusChange = { status -> onStatusChange(teilnahme, status) }
                 )
             }
-            Button(
-                onClick = onEditClick,
-                modifier = defaultActionModifier(topPadding = 8)
-            ) {
-                Text(text = "Bearbeiten")
-            }
-            OutlinedButton(
-                onClick = onRemoveClick,
-                modifier = defaultActionModifier(topPadding = 8)
-            ) {
-                Text(text = "Termin loeschen")
+            if (canManageEvents) {
+                Button(
+                    onClick = onEditClick,
+                    modifier = defaultActionModifier(topPadding = 8)
+                ) {
+                    Text(text = "Bearbeiten")
+                }
+                OutlinedButton(
+                    onClick = onRemoveClick,
+                    modifier = defaultActionModifier(topPadding = 8)
+                ) {
+                    Text(text = "Termin loeschen")
+                }
             }
         }
     }
@@ -359,6 +374,7 @@ private fun EventListItem(
 @Composable
 private fun TeilnahmeRow(
     teilnahme: Teilnahme,
+    canEditStatus: Boolean,
     onStatusChange: (TeilnahmeStatus) -> Unit
 ) {
     Text(
@@ -366,16 +382,18 @@ private fun TeilnahmeRow(
         modifier = Modifier.fieldTopPadding(8),
         style = MaterialTheme.typography.bodyMedium
     )
-    Row(
-        modifier = defaultActionModifier(topPadding = 4)
-    ) {
-        TeilnahmeStatus.entries.forEach { status ->
-            FilterChip(
-                selected = teilnahme.status == status,
-                onClick = { onStatusChange(status) },
-                label = { Text(text = status.label) },
-                modifier = Modifier.padding(end = 8.dp)
-            )
+    if (canEditStatus) {
+        Row(
+            modifier = defaultActionModifier(topPadding = 4)
+        ) {
+            TeilnahmeStatus.entries.forEach { status ->
+                FilterChip(
+                    selected = teilnahme.status == status,
+                    onClick = { onStatusChange(status) },
+                    label = { Text(text = status.label) },
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
         }
     }
 }

@@ -40,6 +40,8 @@ fun MainAppScreen(
     var selectedTab by remember { mutableStateOf(AppTab.Profile) }
     var team by remember { mutableStateOf<Team?>(null) }
     var events by remember { mutableStateOf(emptyList<TeamEvent>()) }
+    val currentMember = team?.members?.firstOrNull { it.name == displayName }
+    val isTrainer = currentMember?.role == TeamRole.Trainer
 
     Scaffold(
         topBar = {
@@ -76,10 +78,13 @@ fun MainAppScreen(
         when (selectedTab) {
             AppTab.Profile -> ProfileScreen(
                 name = displayName,
+                team = team,
+                currentMember = currentMember,
                 modifier = Modifier.padding(innerPadding)
             )
             AppTab.Team -> TeamScreen(
                 team = team,
+                canManageTeam = isTrainer,
                 onTeamCreate = { teamName ->
                     team = Team(
                         name = teamName,
@@ -124,12 +129,21 @@ fun MainAppScreen(
                         team = currentTeam.copy(
                             members = currentTeam.members - member
                         )
+                        events = events.map { event ->
+                            event.copy(
+                                teilnahmen = event.teilnahmen.filterNot {
+                                    it.member == member
+                                }
+                            )
+                        }
                     }
                 },
                 modifier = Modifier.padding(innerPadding)
             )
             AppTab.Events -> EventScreen(
                 team = team,
+                currentMember = currentMember,
+                canManageEvents = isTrainer,
                 events = events,
                 onEventCreate = { event ->
                     events = events + event
