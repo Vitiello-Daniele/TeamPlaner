@@ -40,6 +40,7 @@ fun MainAppScreen(
     var selectedTab by remember { mutableStateOf(AppTab.Profile) }
     var team by remember { mutableStateOf<Team?>(null) }
     var events by remember { mutableStateOf(emptyList<TeamEvent>()) }
+    var inviteCodeNumber by remember { mutableStateOf(1) }
     val currentMember = team?.members?.firstOrNull { it.name == displayName }
     val isTrainer = currentMember?.role == TeamRole.Trainer
 
@@ -88,7 +89,8 @@ fun MainAppScreen(
                 onTeamCreate = { teamName ->
                     team = Team(
                         name = teamName,
-                        inviteCode = createInviteCode(teamName),
+                        inviteCode = createInviteCode(teamName, inviteCodeNumber),
+                        inviteCodeActive = true,
                         members = listOf(
                             TeamMember(
                                 name = displayName,
@@ -101,6 +103,7 @@ fun MainAppScreen(
                     team = Team(
                         name = "Team $inviteCode",
                         inviteCode = inviteCode,
+                        inviteCodeActive = true,
                         members = listOf(
                             TeamMember(
                                 name = displayName,
@@ -113,7 +116,11 @@ fun MainAppScreen(
                     val currentTeam = team
                     val trimmedName = memberName.trim()
 
-                    if (currentTeam != null && trimmedName.isNotBlank()) {
+                    if (
+                        currentTeam != null &&
+                        trimmedName.isNotBlank() &&
+                        currentTeam.members.none { it.name == trimmedName }
+                    ) {
                         team = currentTeam.copy(
                             members = currentTeam.members + TeamMember(
                                 name = trimmedName,
@@ -136,6 +143,25 @@ fun MainAppScreen(
                                 }
                             )
                         }
+                    }
+                },
+                onInviteCodeRefresh = {
+                    val currentTeam = team
+
+                    if (currentTeam != null) {
+                        val nextNumber = inviteCodeNumber + 1
+                        inviteCodeNumber = nextNumber
+                        team = currentTeam.copy(
+                            inviteCode = createInviteCode(currentTeam.name, nextNumber),
+                            inviteCodeActive = true
+                        )
+                    }
+                },
+                onInviteCodeDeactivate = {
+                    val currentTeam = team
+
+                    if (currentTeam != null) {
+                        team = currentTeam.copy(inviteCodeActive = false)
                     }
                 },
                 modifier = Modifier.padding(innerPadding)
@@ -166,11 +192,11 @@ fun MainAppScreen(
     }
 }
 
-private fun createInviteCode(teamName: String): String {
+private fun createInviteCode(teamName: String, number: Int): String {
     val codeBase = teamName
         .filter { it.isLetterOrDigit() }
         .uppercase()
         .take(4)
 
-    return codeBase.ifBlank { "TEAM" } + "01"
+    return codeBase.ifBlank { "TEAM" } + number.toString().padStart(2, '0')
 }

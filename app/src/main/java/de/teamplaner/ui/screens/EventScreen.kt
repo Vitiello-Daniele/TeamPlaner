@@ -105,6 +105,7 @@ private fun EventForm(
     var selectedMembers by remember(team, editedEvent) {
         mutableStateOf(editedEvent?.teilnahmen?.map { it.member }?.toSet() ?: team.members.toSet())
     }
+    var errorText by remember(editedEvent) { mutableStateOf("") }
 
     Text(
         text = if (editedEvent == null) "Neuer Termin" else "Termin bearbeiten",
@@ -169,14 +170,24 @@ private fun EventForm(
     Button(
         onClick = {
             val trimmedTitle = title.trim()
+            val trimmedDate = date.trim()
+            val trimmedTime = time.trim()
 
-            if (trimmedTitle.isNotBlank()) {
+            if (trimmedTitle.isBlank()) {
+                errorText = "Bitte einen Titel eingeben"
+            } else if (trimmedDate.isBlank()) {
+                errorText = "Bitte ein Datum eingeben"
+            } else if (trimmedTime.isBlank()) {
+                errorText = "Bitte eine Uhrzeit eingeben"
+            } else if (selectedMembers.isEmpty()) {
+                errorText = "Bitte mindestens einen Teilnehmer auswaehlen"
+            } else {
                 onEventSave(
                     TeamEvent(
                         type = eventType,
                         title = trimmedTitle,
-                        date = date.trim(),
-                        time = time.trim(),
+                        date = trimmedDate,
+                        time = trimmedTime,
                         location = location.trim(),
                         teilnahmen = selectedMembers.map { member ->
                             editedEvent?.teilnahmen?.firstOrNull { it.member == member }
@@ -193,11 +204,19 @@ private fun EventForm(
                 location = ""
                 eventType = TeamEventType.Training
                 selectedMembers = team.members.toSet()
+                errorText = ""
             }
         },
         modifier = defaultActionModifier(topPadding = 24)
     ) {
         Text(text = if (editedEvent == null) "Termin speichern" else "Aenderungen speichern")
+    }
+    if (errorText.isNotBlank()) {
+        Text(
+            text = errorText,
+            modifier = Modifier.fieldTopPadding(8),
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 
     if (editedEvent != null) {

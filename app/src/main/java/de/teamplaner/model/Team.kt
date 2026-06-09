@@ -3,6 +3,7 @@ package de.teamplaner.model
 data class Team(
     val name: String,
     val inviteCode: String,
+    val inviteCodeActive: Boolean,
     val members: List<TeamMember>
 )
 
