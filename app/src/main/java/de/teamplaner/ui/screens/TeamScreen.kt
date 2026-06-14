@@ -84,6 +84,7 @@ private fun TeamOverviewContent(
 ) {
     var memberName by remember { mutableStateOf("") }
     var memberError by remember { mutableStateOf("") }
+    val memberSuggestions = listOf("Daniel", "David", "Dario", "Max", "Mia", "Laura", "Lea", "Tom")
 
     ScreenContent(modifier = modifier) {
         Text(
@@ -156,6 +157,12 @@ private fun TeamOverviewContent(
                     label = "Mitgliedsname",
                     modifier = Modifier.fieldTopPadding(24)
                 )
+                MemberSuggestions(
+                    query = memberName,
+                    existingMembers = team.members,
+                    suggestions = memberSuggestions,
+                    onSuggestionClick = { memberName = it }
+                )
                 Button(
                     onClick = {
                         val trimmedName = memberName.trim()
@@ -182,6 +189,45 @@ private fun TeamOverviewContent(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MemberSuggestions(
+    query: String,
+    existingMembers: List<TeamMember>,
+    suggestions: List<String>,
+    onSuggestionClick: (String) -> Unit
+) {
+    val trimmedQuery = query.trim()
+
+    if (trimmedQuery.length < 2) {
+        return
+    }
+
+    val filteredSuggestions = suggestions
+        .filter { suggestion ->
+            suggestion.contains(trimmedQuery, ignoreCase = true) &&
+                existingMembers.none { it.name.equals(suggestion, ignoreCase = true) }
+        }
+        .take(4)
+
+    if (filteredSuggestions.isEmpty()) {
+        return
+    }
+
+    Text(
+        text = "Vorschläge",
+        modifier = Modifier.fieldTopPadding(12),
+        style = MaterialTheme.typography.titleSmall
+    )
+    filteredSuggestions.forEach { suggestion ->
+        OutlinedButton(
+            onClick = { onSuggestionClick(suggestion) },
+            modifier = defaultActionModifier(topPadding = 8)
+        ) {
+            Text(text = suggestion)
         }
     }
 }

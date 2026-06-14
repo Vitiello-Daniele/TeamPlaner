@@ -25,7 +25,8 @@ private enum class AppTab(val title: String) {
     Profile("Profil"),
     Team("Team"),
     Events("Termine"),
-    Duties("Dienste")
+    Duties("Dienste"),
+    Plan("Plan")
 }
 
 @Composable
@@ -104,6 +105,16 @@ fun MainAppScreen(
                 duties = appState.duties,
                 onDutyCreate = appState::createDuty,
                 onDutyRemove = appState::removeDuty,
+                modifier = Modifier.padding(innerPadding)
+            )
+            AppTab.Plan -> PlanScreen(
+                team = appState.team,
+                events = appState.events,
+                duties = appState.duties,
+                assignments = appState.assignments,
+                canManageAssignments = appState.isTrainer,
+                onDutyAssign = appState::assignDuty,
+                onAssignmentRemove = appState::removeAssignment,
                 modifier = Modifier.padding(innerPadding)
             )
         }

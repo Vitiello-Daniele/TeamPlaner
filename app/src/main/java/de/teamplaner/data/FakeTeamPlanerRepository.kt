@@ -1,6 +1,7 @@
 package de.teamplaner.data
 
 import de.teamplaner.model.Duty
+import de.teamplaner.model.DutyType
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamEventType
@@ -54,14 +55,24 @@ class FakeTeamPlanerRepository : TeamPlanerRepository {
         return TeamPlanerData(
             team = team,
             events = listOf(event),
-            duties = listOf(
-                Duty(
-                    title = "Trikotdienst",
-                    description = "Trikots nach dem Spiel mitnehmen und waschen"
-                ),
-                Duty(
-                    title = "Getränkedienst",
-                    description = "Getränke für das Team organisieren"
+            duties = DutyType.entries
+                .filterNot { it == DutyType.Other }
+                .map { type ->
+                    Duty(
+                        type = type,
+                        title = type.label,
+                        description = type.defaultDescription
+                    )
+                },
+            assignments = listOf(
+                de.teamplaner.model.DutyAssignment(
+                    event = event,
+                    duty = Duty(
+                        type = DutyType.Jersey,
+                        title = DutyType.Jersey.label,
+                        description = DutyType.Jersey.defaultDescription
+                    ),
+                    member = member
                 )
             )
         )

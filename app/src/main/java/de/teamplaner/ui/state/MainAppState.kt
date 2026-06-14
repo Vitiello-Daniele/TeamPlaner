@@ -7,6 +7,7 @@ import de.teamplaner.data.FakeTeamPlanerRepository
 import de.teamplaner.data.TeamPlanerData
 import de.teamplaner.data.TeamPlanerRepository
 import de.teamplaner.model.Duty
+import de.teamplaner.model.DutyAssignment
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
@@ -26,6 +27,9 @@ class MainAppState(
         private set
 
     var duties by mutableStateOf(initialData.duties)
+        private set
+
+    var assignments by mutableStateOf(initialData.assignments)
         private set
 
     private var inviteCodeNumber = 1
@@ -99,6 +103,7 @@ class MainAppState(
                     }
                 )
             }
+            assignments = assignments.filterNot { it.member == member }
             saveData()
         }
     }
@@ -144,6 +149,7 @@ class MainAppState(
 
     fun removeEvent(event: TeamEvent) {
         events = events - event
+        assignments = assignments.filterNot { it.event == event }
         saveData()
     }
 
@@ -154,6 +160,25 @@ class MainAppState(
 
     fun removeDuty(duty: Duty) {
         duties = duties - duty
+        assignments = assignments.filterNot { it.duty == duty }
+        saveData()
+    }
+
+    fun assignDuty(event: TeamEvent, duty: Duty, member: TeamMember) {
+        assignments = assignments
+            .filterNot { it.event == event && it.duty == duty }
+            .plus(
+                DutyAssignment(
+                    event = event,
+                    duty = duty,
+                    member = member
+                )
+            )
+        saveData()
+    }
+
+    fun removeAssignment(assignment: DutyAssignment) {
+        assignments = assignments - assignment
         saveData()
     }
 
@@ -162,7 +187,8 @@ class MainAppState(
             TeamPlanerData(
                 team = team,
                 events = events,
-                duties = duties
+                duties = duties,
+                assignments = assignments
             )
         )
     }

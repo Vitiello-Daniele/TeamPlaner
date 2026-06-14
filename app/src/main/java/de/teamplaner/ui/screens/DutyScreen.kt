@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.teamplaner.model.Duty
+import de.teamplaner.model.DutyType
 import de.teamplaner.model.Team
 
 private sealed interface DutyView {
@@ -160,6 +162,7 @@ private fun DutyFormScreen(
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var dutyType by remember { mutableStateOf(DutyType.Jersey) }
     var errorText by remember { mutableStateOf("") }
 
     Column(
@@ -172,6 +175,23 @@ private fun DutyFormScreen(
             title = "Dienst anlegen",
             onBackClick = onBackClick
         )
+        Text(
+            text = "Diensttyp",
+            modifier = Modifier.fieldTopPadding(24),
+            style = MaterialTheme.typography.titleMedium
+        )
+        DutyType.entries.forEach { type ->
+            FilterChip(
+                selected = dutyType == type,
+                onClick = {
+                    dutyType = type
+                    title = type.label
+                    description = type.defaultDescription
+                },
+                label = { Text(text = type.label) },
+                modifier = Modifier.fieldTopPadding(8)
+            )
+        }
         AuthTextField(
             value = title,
             onValueChange = { title = it },
@@ -193,6 +213,7 @@ private fun DutyFormScreen(
                 } else {
                     onDutyCreate(
                         Duty(
+                            type = dutyType,
                             title = trimmedTitle,
                             description = description.trim()
                         )
