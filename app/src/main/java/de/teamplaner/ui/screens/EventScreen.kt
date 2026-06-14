@@ -35,6 +35,12 @@ import de.teamplaner.model.TeamMember
 import de.teamplaner.model.Teilnahme
 import de.teamplaner.model.TeilnahmeStatus
 
+private sealed interface EventView {
+    data object List : EventView
+    data class Form(val event: TeamEvent?) : EventView
+    data class Detail(val event: TeamEvent) : EventView
+}
+
 @Composable
 fun EventScreen(
     team: Team?,
@@ -46,33 +52,67 @@ fun EventScreen(
     onEventRemove: (TeamEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var editedEvent by remember { mutableStateOf<TeamEvent?>(null) }
-    var selectedEvent by remember { mutableStateOf<TeamEvent?>(null) }
+    var eventView by remember { mutableStateOf<EventView>(EventView.List) }
 
-    val openEvent = selectedEvent
-    if (openEvent != null) {
-        EventDetailScreen(
-            event = openEvent,
+    when (val currentView = eventView) {
+        EventView.List -> EventListScreen(
+            team = team,
+            events = events,
+            canManageEvents = canManageEvents,
+            onCreateClick = { eventView = EventView.Form(event = null) },
+            onEventOpen = { event -> eventView = EventView.Detail(event) },
+            modifier = modifier
+        )
+        is EventView.Form -> {
+            if (team == null) {
+                eventView = EventView.List
+            } else {
+                EventFormScreen(
+                    team = team,
+                    editedEvent = currentView.event,
+                    onBackClick = { eventView = EventView.List },
+                    onEventSave = { event ->
+                        val editedEvent = currentView.event
+
+                        if (editedEvent == null) {
+                            onEventCreate(event)
+                        } else {
+                            onEventUpdate(editedEvent, event)
+                        }
+                        eventView = EventView.List
+                    },
+                    modifier = modifier
+                )
+            }
+        }
+        is EventView.Detail -> EventDetailScreen(
+            event = currentView.event,
             currentMember = currentMember,
             canManageEvents = canManageEvents,
-            onBackClick = { selectedEvent = null },
+            onBackClick = { eventView = EventView.List },
             onEventUpdate = { oldEvent, newEvent ->
                 onEventUpdate(oldEvent, newEvent)
-                selectedEvent = newEvent
+                eventView = EventView.Detail(newEvent)
             },
-            onEventEdit = {
-                editedEvent = openEvent
-                selectedEvent = null
-            },
+            onEventEdit = { eventView = EventView.Form(currentView.event) },
             onEventRemove = {
-                onEventRemove(openEvent)
-                selectedEvent = null
+                onEventRemove(currentView.event)
+                eventView = EventView.List
             },
             modifier = modifier
         )
-        return
     }
+}
 
+@Composable
+private fun EventListScreen(
+    team: Team?,
+    events: List<TeamEvent>,
+    canManageEvents: Boolean,
+    onCreateClick: () -> Unit,
+    onEventOpen: (TeamEvent) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -91,34 +131,64 @@ fun EventScreen(
                 modifier = Modifier.fieldTopPadding(12),
                 style = MaterialTheme.typography.bodyLarge
             )
-        } else {
-            if (canManageEvents) {
-                EventForm(
-                    team = team,
-                    editedEvent = editedEvent,
-                    onEventSave = { event ->
-                        val currentEditedEvent = editedEvent
+            return@Column
+        }
 
-                        if (currentEditedEvent == null) {
-                            onEventCreate(event)
-                        } else {
-                            onEventUpdate(currentEditedEvent, event)
-                            editedEvent = null
-                        }
-                    },
-                    onCancelEdit = { editedEvent = null }
+        if (canManageEvents) {
+            Button(
+                onClick = onCreateClick,
+                modifier = defaultActionModifier(topPadding = 24)
+            ) {
+                Text(text = "Termin anlegen")
+            }
+        }
+
+        Text(
+            text = "Geplante Termine",
+            modifier = Modifier.fieldTopPadding(32),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        if (events.isEmpty()) {
+            Text(
+                text = "Noch keine Termine geplant",
+                modifier = Modifier.fieldTopPadding(12),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        } else {
+            events.forEach { event ->
+                EventListItem(
+                    event = event,
+                    onOpenClick = { onEventOpen(event) }
                 )
             }
-            EventList(
-                events = events,
-                currentMember = currentMember,
-                canManageEvents = canManageEvents,
-                onEventUpdate = onEventUpdate,
-                onEventEdit = { event -> editedEvent = event },
-                onEventRemove = onEventRemove,
-                onEventOpen = { event -> selectedEvent = event }
-            )
         }
+    }
+}
+
+@Composable
+private fun EventFormScreen(
+    team: Team,
+    editedEvent: TeamEvent?,
+    onBackClick: () -> Unit,
+    onEventSave: (TeamEvent) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
+        ScreenHeader(
+            title = if (editedEvent == null) "Termin anlegen" else "Termin bearbeiten",
+            onBackClick = onBackClick
+        )
+        EventForm(
+            team = team,
+            editedEvent = editedEvent,
+            onEventSave = onEventSave
+        )
     }
 }
 
@@ -126,8 +196,7 @@ fun EventScreen(
 private fun EventForm(
     team: Team,
     editedEvent: TeamEvent?,
-    onEventSave: (TeamEvent) -> Unit,
-    onCancelEdit: () -> Unit
+    onEventSave: (TeamEvent) -> Unit
 ) {
     var title by remember(editedEvent) { mutableStateOf(editedEvent?.title.orEmpty()) }
     var date by remember(editedEvent) { mutableStateOf(editedEvent?.date.orEmpty()) }
@@ -141,17 +210,11 @@ private fun EventForm(
     }
     var errorText by remember(editedEvent) { mutableStateOf("") }
 
-    Text(
-        text = if (editedEvent == null) "Neuer Termin" else "Termin bearbeiten",
-        modifier = Modifier.fieldTopPadding(32),
-        style = MaterialTheme.typography.titleMedium
-    )
-
     AuthTextField(
         value = title,
         onValueChange = { title = it },
         label = "Titel",
-        modifier = Modifier.fieldTopPadding(12)
+        modifier = Modifier.fieldTopPadding(24)
     )
     AuthTextField(
         value = date,
@@ -207,59 +270,42 @@ private fun EventForm(
             val trimmedDate = date.trim()
             val trimmedTime = time.trim()
 
-            if (trimmedTitle.isBlank()) {
-                errorText = "Bitte einen Titel eingeben"
-            } else if (trimmedDate.isBlank()) {
-                errorText = "Bitte ein Datum eingeben"
-            } else if (trimmedTime.isBlank()) {
-                errorText = "Bitte eine Uhrzeit eingeben"
-            } else if (selectedMembers.isEmpty()) {
-                errorText = "Bitte mindestens einen Teilnehmer auswaehlen"
-            } else {
-                onEventSave(
-                    TeamEvent(
-                        type = eventType,
-                        title = trimmedTitle,
-                        date = trimmedDate,
-                        time = trimmedTime,
-                        location = location.trim(),
-                        teilnahmen = selectedMembers.map { member ->
-                            editedEvent?.teilnahmen?.firstOrNull { it.member == member }
-                                ?: Teilnahme(
-                                    member = member,
-                                    status = TeilnahmeStatus.Offen
-                                )
-                        }
+            when {
+                trimmedTitle.isBlank() -> errorText = "Bitte einen Titel eingeben"
+                trimmedDate.isBlank() -> errorText = "Bitte ein Datum eingeben"
+                trimmedTime.isBlank() -> errorText = "Bitte eine Uhrzeit eingeben"
+                selectedMembers.isEmpty() -> errorText = "Bitte mindestens einen Teilnehmer auswählen"
+                else -> {
+                    onEventSave(
+                        TeamEvent(
+                            type = eventType,
+                            title = trimmedTitle,
+                            date = trimmedDate,
+                            time = trimmedTime,
+                            location = location.trim(),
+                            teilnahmen = selectedMembers.map { member ->
+                                editedEvent?.teilnahmen?.firstOrNull { it.member == member }
+                                    ?: Teilnahme(
+                                        member = member,
+                                        status = TeilnahmeStatus.Offen
+                                    )
+                            }
+                        )
                     )
-                )
-                title = ""
-                date = ""
-                time = ""
-                location = ""
-                eventType = TeamEventType.Training
-                selectedMembers = team.members.toSet()
-                errorText = ""
+                }
             }
         },
         modifier = defaultActionModifier(topPadding = 24)
     ) {
-        Text(text = if (editedEvent == null) "Termin speichern" else "Aenderungen speichern")
+        Text(text = if (editedEvent == null) "Termin speichern" else "Änderungen speichern")
     }
+
     if (errorText.isNotBlank()) {
         Text(
             text = errorText,
             modifier = Modifier.fieldTopPadding(8),
             style = MaterialTheme.typography.bodyMedium
         )
-    }
-
-    if (editedEvent != null) {
-        OutlinedButton(
-            onClick = onCancelEdit,
-            modifier = defaultActionModifier(topPadding = 12)
-        ) {
-            Text(text = "Abbrechen")
-        }
     }
 }
 
@@ -304,63 +350,8 @@ private fun ParticipantRow(
 }
 
 @Composable
-private fun EventList(
-    events: List<TeamEvent>,
-    currentMember: TeamMember?,
-    canManageEvents: Boolean,
-    onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
-    onEventEdit: (TeamEvent) -> Unit,
-    onEventRemove: (TeamEvent) -> Unit,
-    onEventOpen: (TeamEvent) -> Unit
-) {
-    Text(
-        text = "Geplante Termine",
-        modifier = Modifier.fieldTopPadding(32),
-        style = MaterialTheme.typography.titleMedium
-    )
-
-    if (events.isEmpty()) {
-        Text(
-            text = "Noch keine Termine geplant",
-            modifier = Modifier.fieldTopPadding(12),
-            style = MaterialTheme.typography.bodyLarge
-        )
-    } else {
-        events.forEach { event ->
-            EventListItem(
-                event = event,
-                currentMember = currentMember,
-                canManageEvents = canManageEvents,
-                onStatusChange = { teilnahme, status ->
-                    onEventUpdate(
-                        event,
-                        event.copy(
-                            teilnahmen = event.teilnahmen.map {
-                                if (it == teilnahme) {
-                                    it.copy(status = status)
-                                } else {
-                                    it
-                                }
-                            }
-                        )
-                    )
-                },
-                onEditClick = { onEventEdit(event) },
-                onRemoveClick = { onEventRemove(event) },
-                onOpenClick = { onEventOpen(event) }
-            )
-        }
-    }
-}
-
-@Composable
 private fun EventListItem(
     event: TeamEvent,
-    currentMember: TeamMember?,
-    canManageEvents: Boolean,
-    onStatusChange: (Teilnahme, TeilnahmeStatus) -> Unit,
-    onEditClick: () -> Unit,
-    onRemoveClick: () -> Unit,
     onOpenClick: () -> Unit
 ) {
     val offene = event.teilnahmen.count { it.status == TeilnahmeStatus.Offen }
@@ -426,20 +417,10 @@ private fun EventDetailScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBackClick) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_arrow_back),
-                    contentDescription = "Zurück"
-                )
-            }
-            Text(
-                text = "Termindetails",
-                style = MaterialTheme.typography.headlineSmall
-            )
-        }
+        ScreenHeader(
+            title = "Termindetails",
+            onBackClick = onBackClick
+        )
 
         Text(
             text = event.title,
@@ -507,6 +488,27 @@ private fun EventDetailScreen(
                 Text(text = "Termin löschen")
             }
         }
+    }
+}
+
+@Composable
+private fun ScreenHeader(
+    title: String,
+    onBackClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_arrow_back),
+                contentDescription = "Zurück"
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall
+        )
     }
 }
 
