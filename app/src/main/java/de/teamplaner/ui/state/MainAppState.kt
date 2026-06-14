@@ -3,6 +3,9 @@ package de.teamplaner.ui.state
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import de.teamplaner.data.FakeTeamPlanerRepository
+import de.teamplaner.data.TeamPlanerData
+import de.teamplaner.data.TeamPlanerRepository
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
@@ -10,12 +13,15 @@ import de.teamplaner.model.TeamRole
 
 class MainAppState(
     private val displayName: String,
+    private val repository: TeamPlanerRepository = FakeTeamPlanerRepository(),
     private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator()
 ) {
-    var team by mutableStateOf<Team?>(null)
+    private val initialData = repository.loadData(displayName)
+
+    var team by mutableStateOf(initialData.team)
         private set
 
-    var events by mutableStateOf(emptyList<TeamEvent>())
+    var events by mutableStateOf(initialData.events)
         private set
 
     private var inviteCodeNumber = 1
@@ -38,6 +44,7 @@ class MainAppState(
                 )
             )
         )
+        saveData()
     }
 
     fun joinTeam(inviteCode: String) {
@@ -52,6 +59,7 @@ class MainAppState(
                 )
             )
         )
+        saveData()
     }
 
     fun addMember(memberName: String) {
@@ -69,6 +77,7 @@ class MainAppState(
                     role = TeamRole.Member
                 )
             )
+            saveData()
         }
     }
 
@@ -86,6 +95,7 @@ class MainAppState(
                     }
                 )
             }
+            saveData()
         }
     }
 
@@ -99,6 +109,7 @@ class MainAppState(
                 inviteCode = inviteCodeGenerator.create(currentTeam.name, nextNumber),
                 inviteCodeActive = true
             )
+            saveData()
         }
     }
 
@@ -107,11 +118,13 @@ class MainAppState(
 
         if (currentTeam != null) {
             team = currentTeam.copy(inviteCodeActive = false)
+            saveData()
         }
     }
 
     fun createEvent(event: TeamEvent) {
         events = events + event
+        saveData()
     }
 
     fun updateEvent(oldEvent: TeamEvent, newEvent: TeamEvent) {
@@ -121,11 +134,21 @@ class MainAppState(
             events = events.toMutableList().also {
                 it[eventIndex] = newEvent
             }
+            saveData()
         }
     }
 
     fun removeEvent(event: TeamEvent) {
         events = events - event
+        saveData()
     }
 
+    private fun saveData() {
+        repository.saveData(
+            TeamPlanerData(
+                team = team,
+                events = events
+            )
+        )
+    }
 }
