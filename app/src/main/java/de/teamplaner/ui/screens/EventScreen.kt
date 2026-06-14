@@ -1,14 +1,20 @@
 package de.teamplaner.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -19,7 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import de.teamplaner.R
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamEventType
@@ -39,6 +47,31 @@ fun EventScreen(
     modifier: Modifier = Modifier
 ) {
     var editedEvent by remember { mutableStateOf<TeamEvent?>(null) }
+    var selectedEvent by remember { mutableStateOf<TeamEvent?>(null) }
+
+    val openEvent = selectedEvent
+    if (openEvent != null) {
+        EventDetailScreen(
+            event = openEvent,
+            currentMember = currentMember,
+            canManageEvents = canManageEvents,
+            onBackClick = { selectedEvent = null },
+            onEventUpdate = { oldEvent, newEvent ->
+                onEventUpdate(oldEvent, newEvent)
+                selectedEvent = newEvent
+            },
+            onEventEdit = {
+                editedEvent = openEvent
+                selectedEvent = null
+            },
+            onEventRemove = {
+                onEventRemove(openEvent)
+                selectedEvent = null
+            },
+            modifier = modifier
+        )
+        return
+    }
 
     Column(
         modifier = modifier
@@ -82,7 +115,8 @@ fun EventScreen(
                 canManageEvents = canManageEvents,
                 onEventUpdate = onEventUpdate,
                 onEventEdit = { event -> editedEvent = event },
-                onEventRemove = onEventRemove
+                onEventRemove = onEventRemove,
+                onEventOpen = { event -> selectedEvent = event }
             )
         }
     }
@@ -276,7 +310,8 @@ private fun EventList(
     canManageEvents: Boolean,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventEdit: (TeamEvent) -> Unit,
-    onEventRemove: (TeamEvent) -> Unit
+    onEventRemove: (TeamEvent) -> Unit,
+    onEventOpen: (TeamEvent) -> Unit
 ) {
     Text(
         text = "Geplante Termine",
@@ -311,7 +346,8 @@ private fun EventList(
                     )
                 },
                 onEditClick = { onEventEdit(event) },
-                onRemoveClick = { onEventRemove(event) }
+                onRemoveClick = { onEventRemove(event) },
+                onOpenClick = { onEventOpen(event) }
             )
         }
     }
@@ -324,67 +360,151 @@ private fun EventListItem(
     canManageEvents: Boolean,
     onStatusChange: (Teilnahme, TeilnahmeStatus) -> Unit,
     onEditClick: () -> Unit,
-    onRemoveClick: () -> Unit
+    onRemoveClick: () -> Unit,
+    onOpenClick: () -> Unit
 ) {
-    var showDetails by remember { mutableStateOf(false) }
+    val offene = event.teilnahmen.count { it.status == TeilnahmeStatus.Offen }
+    val zugesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Zugesagt }
+    val abgesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Abgesagt }
+
+    Card(
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .widthIn(max = 520.dp)
+            .fillMaxWidth()
+            .clickable(onClick = onOpenClick)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = event.type.label,
+                style = MaterialTheme.typography.labelLarge
+            )
+            Text(
+                text = event.title,
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = "${event.date} um ${event.time}",
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = event.location.ifBlank { "Kein Ort angegeben" },
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = "$zugesagt zugesagt, $abgesagt abgesagt, $offene offen",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun EventDetailScreen(
+    event: TeamEvent,
+    currentMember: TeamMember?,
+    canManageEvents: Boolean,
+    onBackClick: () -> Unit,
+    onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
+    onEventEdit: () -> Unit,
+    onEventRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val offene = event.teilnahmen.count { it.status == TeilnahmeStatus.Offen }
     val zugesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Zugesagt }
     val abgesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Abgesagt }
 
     Column(
-        modifier = defaultActionModifier(topPadding = 16)
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
     ) {
-        Text(
-            text = event.type.label,
-            style = MaterialTheme.typography.labelLarge
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBackClick) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_arrow_back),
+                    contentDescription = "Zurück"
+                )
+            }
+            Text(
+                text = "Termindetails",
+                style = MaterialTheme.typography.headlineSmall
+            )
+        }
+
         Text(
             text = event.title,
-            modifier = Modifier.fieldTopPadding(4),
+            modifier = Modifier.fieldTopPadding(24),
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Text(
+            text = event.type.label,
+            modifier = Modifier.fieldTopPadding(8),
             style = MaterialTheme.typography.titleMedium
         )
         Text(
-            text = "${event.date} ${event.time}",
-            modifier = Modifier.fieldTopPadding(4),
-            style = MaterialTheme.typography.bodyMedium
+            text = "${event.date} um ${event.time}",
+            modifier = Modifier.fieldTopPadding(16),
+            style = MaterialTheme.typography.bodyLarge
         )
         Text(
             text = event.location.ifBlank { "Kein Ort angegeben" },
-            modifier = Modifier.fieldTopPadding(4),
-            style = MaterialTheme.typography.bodyMedium
+            modifier = Modifier.fieldTopPadding(8),
+            style = MaterialTheme.typography.bodyLarge
         )
         Text(
             text = "Status: $zugesagt zugesagt, $abgesagt abgesagt, $offene offen",
-            modifier = Modifier.fieldTopPadding(4),
-            style = MaterialTheme.typography.bodyMedium
+            modifier = Modifier.fieldTopPadding(16),
+            style = MaterialTheme.typography.bodyLarge
         )
-        Button(
-            onClick = { showDetails = !showDetails },
-            modifier = defaultActionModifier(topPadding = 8)
-        ) {
-            Text(text = if (showDetails) "Details ausblenden" else "Details")
+
+        Text(
+            text = "Teilnehmer",
+            modifier = Modifier.fieldTopPadding(24),
+            style = MaterialTheme.typography.titleMedium
+        )
+        event.teilnahmen.forEach { teilnahme ->
+            TeilnahmeRow(
+                teilnahme = teilnahme,
+                canEditStatus = canManageEvents || teilnahme.member == currentMember,
+                onStatusChange = { status ->
+                    onEventUpdate(
+                        event,
+                        event.copy(
+                            teilnahmen = event.teilnahmen.map {
+                                if (it == teilnahme) {
+                                    it.copy(status = status)
+                                } else {
+                                    it
+                                }
+                            }
+                        )
+                    )
+                }
+            )
         }
-        if (showDetails) {
-            event.teilnahmen.forEach { teilnahme ->
-                TeilnahmeRow(
-                    teilnahme = teilnahme,
-                    canEditStatus = canManageEvents || teilnahme.member == currentMember,
-                    onStatusChange = { status -> onStatusChange(teilnahme, status) }
-                )
+
+        if (canManageEvents) {
+            Button(
+                onClick = onEventEdit,
+                modifier = defaultActionModifier(topPadding = 24)
+            ) {
+                Text(text = "Bearbeiten")
             }
-            if (canManageEvents) {
-                Button(
-                    onClick = onEditClick,
-                    modifier = defaultActionModifier(topPadding = 8)
-                ) {
-                    Text(text = "Bearbeiten")
-                }
-                OutlinedButton(
-                    onClick = onRemoveClick,
-                    modifier = defaultActionModifier(topPadding = 8)
-                ) {
-                    Text(text = "Termin loeschen")
-                }
+            OutlinedButton(
+                onClick = onEventRemove,
+                modifier = defaultActionModifier(topPadding = 8)
+            ) {
+                Text(text = "Termin löschen")
             }
         }
     }
