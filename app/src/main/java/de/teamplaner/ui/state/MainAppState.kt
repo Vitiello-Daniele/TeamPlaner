@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import de.teamplaner.data.FakeTeamPlanerRepository
 import de.teamplaner.data.TeamPlanerData
 import de.teamplaner.data.TeamPlanerRepository
+import de.teamplaner.model.Duty
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
@@ -22,6 +23,9 @@ class MainAppState(
         private set
 
     var events by mutableStateOf(initialData.events)
+        private set
+
+    var duties by mutableStateOf(initialData.duties)
         private set
 
     private var inviteCodeNumber = 1
@@ -143,11 +147,22 @@ class MainAppState(
         saveData()
     }
 
+    fun createDuty(duty: Duty) {
+        duties = duties + duty
+        saveData()
+    }
+
+    fun removeDuty(duty: Duty) {
+        duties = duties - duty
+        saveData()
+    }
+
     private fun saveData() {
         repository.saveData(
             TeamPlanerData(
                 team = team,
-                events = events
+                events = events,
+                duties = duties
             )
         )
     }

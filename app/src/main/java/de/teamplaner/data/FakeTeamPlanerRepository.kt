@@ -1,5 +1,6 @@
 package de.teamplaner.data
 
+import de.teamplaner.model.Duty
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamEventType
@@ -52,7 +53,17 @@ class FakeTeamPlanerRepository : TeamPlanerRepository {
 
         return TeamPlanerData(
             team = team,
-            events = listOf(event)
+            events = listOf(event),
+            duties = listOf(
+                Duty(
+                    title = "Trikotdienst",
+                    description = "Trikots nach dem Spiel mitnehmen und waschen"
+                ),
+                Duty(
+                    title = "Getränkedienst",
+                    description = "Getränke für das Team organisieren"
+                )
+            )
         )
     }
 

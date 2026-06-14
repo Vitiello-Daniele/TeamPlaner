@@ -24,7 +24,8 @@ import de.teamplaner.ui.state.MainAppState
 private enum class AppTab(val title: String) {
     Profile("Profil"),
     Team("Team"),
-    Events("Termine")
+    Events("Termine"),
+    Duties("Dienste")
 }
 
 @Composable
@@ -95,6 +96,14 @@ fun MainAppScreen(
                 onEventCreate = appState::createEvent,
                 onEventUpdate = appState::updateEvent,
                 onEventRemove = appState::removeEvent,
+                modifier = Modifier.padding(innerPadding)
+            )
+            AppTab.Duties -> DutyScreen(
+                team = appState.team,
+                canManageDuties = appState.isTrainer,
+                duties = appState.duties,
+                onDutyCreate = appState::createDuty,
+                onDutyRemove = appState::removeDuty,
                 modifier = Modifier.padding(innerPadding)
             )
         }
