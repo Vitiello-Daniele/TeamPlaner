@@ -109,6 +109,7 @@ fun MainAppScreen(
             )
             AppTab.Plan -> PlanScreen(
                 team = appState.team,
+                currentMember = appState.currentMember,
                 events = appState.events,
                 duties = appState.duties,
                 assignments = appState.assignments,

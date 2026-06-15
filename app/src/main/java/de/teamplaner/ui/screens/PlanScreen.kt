@@ -29,12 +29,13 @@ import de.teamplaner.model.TeamMember
 
 private sealed interface PlanView {
     data object List : PlanView
-    data object Form : PlanView
+    data class Form(val assignment: DutyAssignment?) : PlanView
 }
 
 @Composable
 fun PlanScreen(
     team: Team?,
+    currentMember: TeamMember?,
     events: List<TeamEvent>,
     duties: List<Duty>,
     assignments: List<DutyAssignment>,
@@ -46,22 +47,25 @@ fun PlanScreen(
 ) {
     var planView by remember { mutableStateOf<PlanView>(PlanView.List) }
 
-    when (planView) {
+    when (val currentView = planView) {
         PlanView.List -> PlanListScreen(
             team = team,
             events = events,
             duties = duties,
             assignments = assignments,
             canManageAssignments = canManageAssignments,
-            onCreateClick = { planView = PlanView.Form },
+            currentMember = currentMember,
+            onCreateClick = { planView = PlanView.Form(assignment = null) },
+            onAssignmentEdit = { assignment -> planView = PlanView.Form(assignment) },
             onFairPlanCreate = onFairPlanCreate,
             onAssignmentRemove = onAssignmentRemove,
             modifier = modifier
         )
-        PlanView.Form -> AssignmentFormScreen(
+        is PlanView.Form -> AssignmentFormScreen(
             team = team,
             events = events,
             duties = duties,
+            editedAssignment = currentView.assignment,
             onBackClick = { planView = PlanView.List },
             onDutyAssign = { event, duty, member ->
                 onDutyAssign(event, duty, member)
@@ -79,7 +83,9 @@ private fun PlanListScreen(
     duties: List<Duty>,
     assignments: List<DutyAssignment>,
     canManageAssignments: Boolean,
+    currentMember: TeamMember?,
     onCreateClick: () -> Unit,
+    onAssignmentEdit: (DutyAssignment) -> Unit,
     onFairPlanCreate: (Boolean) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
     modifier: Modifier = Modifier
@@ -109,6 +115,10 @@ private fun PlanListScreen(
             team = team,
             events = events,
             duties = duties,
+            assignments = assignments
+        )
+        MyAssignments(
+            currentMember = currentMember,
             assignments = assignments
         )
 
@@ -148,8 +158,10 @@ private fun PlanListScreen(
             events.forEach { event ->
                 EventAssignmentCard(
                     event = event,
+                    duties = duties,
                     assignments = assignments.filter { it.event == event },
                     canManageAssignments = canManageAssignments,
+                    onAssignmentEdit = onAssignmentEdit,
                     onAssignmentRemove = onAssignmentRemove
                 )
             }
@@ -205,6 +217,15 @@ private fun PlanSummary(
                 style = MaterialTheme.typography.bodyMedium
             )
             Text(
+                text = planStatusText(
+                    events = events,
+                    duties = duties,
+                    assignments = assignments
+                ),
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
                 text = "Automatische Verteilung bevorzugt Mitglieder mit weniger bisherigen Diensten.",
                 modifier = Modifier.fieldTopPadding(8),
                 style = MaterialTheme.typography.bodyMedium
@@ -213,6 +234,49 @@ private fun PlanSummary(
                 members = team.members,
                 assignments = assignments
             )
+        }
+    }
+}
+
+@Composable
+private fun MyAssignments(
+    currentMember: TeamMember?,
+    assignments: List<DutyAssignment>
+) {
+    if (currentMember == null) {
+        return
+    }
+
+    val ownAssignments = assignments.filter { it.member == currentMember }
+
+    Card(
+        modifier = Modifier
+            .padding(top = 16.dp)
+            .widthIn(max = 520.dp)
+            .fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Meine Dienste",
+                style = MaterialTheme.typography.titleMedium
+            )
+            if (ownAssignments.isEmpty()) {
+                Text(
+                    text = "Du hast aktuell keine Dienste",
+                    modifier = Modifier.fieldTopPadding(8),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                ownAssignments.forEach { assignment ->
+                    Text(
+                        text = "${assignment.event.title}: ${assignment.duty.title}",
+                        modifier = Modifier.fieldTopPadding(8),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
     }
 }
@@ -242,10 +306,16 @@ private fun MemberLoadList(
 @Composable
 private fun EventAssignmentCard(
     event: TeamEvent,
+    duties: List<Duty>,
     assignments: List<DutyAssignment>,
     canManageAssignments: Boolean,
+    onAssignmentEdit: (DutyAssignment) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit
 ) {
+    val missingDuties = duties.filterNot { duty ->
+        assignments.any { it.duty == duty }
+    }
+
     Card(
         modifier = Modifier
             .padding(top = 12.dp)
@@ -264,6 +334,15 @@ private fun EventAssignmentCard(
                 modifier = Modifier.fieldTopPadding(4),
                 style = MaterialTheme.typography.bodyMedium
             )
+            Text(
+                text = if (missingDuties.isEmpty()) {
+                    "Plan vollständig"
+                } else {
+                    "Offen: ${missingDuties.joinToString { it.title }}"
+                },
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
 
             if (assignments.isEmpty()) {
                 Text(
@@ -279,6 +358,12 @@ private fun EventAssignmentCard(
                         style = MaterialTheme.typography.bodyLarge
                     )
                     if (canManageAssignments) {
+                        Button(
+                            onClick = { onAssignmentEdit(assignment) },
+                            modifier = defaultActionModifier(topPadding = 8)
+                        ) {
+                            Text(text = "Bearbeiten")
+                        }
                         OutlinedButton(
                             onClick = { onAssignmentRemove(assignment) },
                             modifier = defaultActionModifier(topPadding = 8)
@@ -297,14 +382,23 @@ private fun AssignmentFormScreen(
     team: Team?,
     events: List<TeamEvent>,
     duties: List<Duty>,
+    editedAssignment: DutyAssignment?,
     onBackClick: () -> Unit,
     onDutyAssign: (TeamEvent, Duty, TeamMember) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedEvent by remember { mutableStateOf<TeamEvent?>(events.firstOrNull()) }
-    var selectedDuty by remember { mutableStateOf<Duty?>(duties.firstOrNull()) }
-    var memberQuery by remember { mutableStateOf("") }
-    var selectedMember by remember { mutableStateOf<TeamMember?>(null) }
+    var selectedEvent by remember(editedAssignment) {
+        mutableStateOf(editedAssignment?.event ?: events.firstOrNull())
+    }
+    var selectedDuty by remember(editedAssignment) {
+        mutableStateOf(editedAssignment?.duty ?: duties.firstOrNull())
+    }
+    var memberQuery by remember(editedAssignment) {
+        mutableStateOf(editedAssignment?.member?.name.orEmpty())
+    }
+    var selectedMember by remember(editedAssignment) {
+        mutableStateOf(editedAssignment?.member)
+    }
     var errorText by remember { mutableStateOf("") }
 
     Column(
@@ -314,7 +408,7 @@ private fun AssignmentFormScreen(
             .padding(16.dp)
     ) {
         ScreenHeader(
-            title = "Dienst zuweisen",
+            title = if (editedAssignment == null) "Dienst zuweisen" else "Zuweisung bearbeiten",
             onBackClick = onBackClick
         )
 
@@ -390,7 +484,7 @@ private fun AssignmentFormScreen(
             },
             modifier = defaultActionModifier(topPadding = 24)
         ) {
-            Text(text = "Zuweisen")
+            Text(text = if (editedAssignment == null) "Zuweisen" else "Speichern")
         }
 
         if (errorText.isNotBlank()) {
@@ -400,6 +494,23 @@ private fun AssignmentFormScreen(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+    }
+}
+
+private fun planStatusText(
+    events: List<TeamEvent>,
+    duties: List<Duty>,
+    assignments: List<DutyAssignment>
+): String {
+    val expectedAssignments = events.size * duties.size
+    val missingAssignments = expectedAssignments - assignments.size
+
+    return if (expectedAssignments == 0) {
+        "Plan noch nicht bewertbar"
+    } else if (missingAssignments <= 0) {
+        "Plan vollständig"
+    } else {
+        "Plan unvollständig: $missingAssignments Zuweisungen fehlen"
     }
 }
 
