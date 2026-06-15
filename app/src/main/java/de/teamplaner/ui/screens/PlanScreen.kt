@@ -41,6 +41,7 @@ fun PlanScreen(
     canManageAssignments: Boolean,
     onDutyAssign: (TeamEvent, Duty, TeamMember) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
+    onFairPlanCreate: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var planView by remember { mutableStateOf<PlanView>(PlanView.List) }
@@ -49,9 +50,11 @@ fun PlanScreen(
         PlanView.List -> PlanListScreen(
             team = team,
             events = events,
+            duties = duties,
             assignments = assignments,
             canManageAssignments = canManageAssignments,
             onCreateClick = { planView = PlanView.Form },
+            onFairPlanCreate = onFairPlanCreate,
             onAssignmentRemove = onAssignmentRemove,
             modifier = modifier
         )
@@ -73,9 +76,11 @@ fun PlanScreen(
 private fun PlanListScreen(
     team: Team?,
     events: List<TeamEvent>,
+    duties: List<Duty>,
     assignments: List<DutyAssignment>,
     canManageAssignments: Boolean,
     onCreateClick: () -> Unit,
+    onFairPlanCreate: (Boolean) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -100,12 +105,36 @@ private fun PlanListScreen(
             return@Column
         }
 
+        PlanSummary(
+            team = team,
+            events = events,
+            duties = duties,
+            assignments = assignments
+        )
+
         if (canManageAssignments) {
+            AutoPlanHints(
+                team = team,
+                events = events,
+                duties = duties
+            )
             Button(
                 onClick = onCreateClick,
                 modifier = defaultActionModifier(topPadding = 24)
             ) {
                 Text(text = "Dienst zuweisen")
+            }
+            Button(
+                onClick = { onFairPlanCreate(false) },
+                modifier = defaultActionModifier(topPadding = 12)
+            ) {
+                Text(text = "Automatisch ergänzen")
+            }
+            OutlinedButton(
+                onClick = { onFairPlanCreate(true) },
+                modifier = defaultActionModifier(topPadding = 12)
+            ) {
+                Text(text = "Plan neu verteilen")
             }
         }
 
@@ -127,6 +156,88 @@ private fun PlanListScreen(
         }
     }
 }
+
+@Composable
+private fun AutoPlanHints(
+    team: Team,
+    events: List<TeamEvent>,
+    duties: List<Duty>
+) {
+    val hint = when {
+        team.members.isEmpty() -> "Automatische Verteilung braucht mindestens ein Mitglied."
+        events.isEmpty() -> "Automatische Verteilung braucht mindestens einen Termin."
+        duties.isEmpty() -> "Automatische Verteilung braucht mindestens einen Dienst."
+        else -> ""
+    }
+
+    if (hint.isNotBlank()) {
+        Text(
+            text = hint,
+            modifier = Modifier.fieldTopPadding(16),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+private fun PlanSummary(
+    team: Team,
+    events: List<TeamEvent>,
+    duties: List<Duty>,
+    assignments: List<DutyAssignment>
+) {
+    Card(
+        modifier = Modifier
+            .padding(top = 24.dp)
+            .widthIn(max = 520.dp)
+            .fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Übersicht",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = "${events.size} Termine, ${duties.size} Dienste, ${assignments.size} Zuweisungen",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = "Automatische Verteilung bevorzugt Mitglieder mit weniger bisherigen Diensten.",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            MemberLoadList(
+                members = team.members,
+                assignments = assignments
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemberLoadList(
+    members: List<TeamMember>,
+    assignments: List<DutyAssignment>
+) {
+    Text(
+        text = "Dienste pro Mitglied",
+        modifier = Modifier.fieldTopPadding(16),
+        style = MaterialTheme.typography.titleSmall
+    )
+    members.forEach { member ->
+        val count = assignments.count { it.member == member }
+
+        Text(
+            text = "${member.name}: $count",
+            modifier = Modifier.fieldTopPadding(4),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
 
 @Composable
 private fun EventAssignmentCard(

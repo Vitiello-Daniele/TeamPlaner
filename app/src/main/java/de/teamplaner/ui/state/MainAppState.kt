@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import de.teamplaner.data.FakeTeamPlanerRepository
 import de.teamplaner.data.TeamPlanerData
 import de.teamplaner.data.TeamPlanerRepository
+import de.teamplaner.domain.DutyAssignmentService
 import de.teamplaner.model.Duty
 import de.teamplaner.model.DutyAssignment
 import de.teamplaner.model.Team
@@ -16,7 +17,8 @@ import de.teamplaner.model.TeamRole
 class MainAppState(
     private val displayName: String,
     private val repository: TeamPlanerRepository = FakeTeamPlanerRepository(),
-    private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator()
+    private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator(),
+    private val dutyAssignmentService: DutyAssignmentService = DutyAssignmentService()
 ) {
     private val initialData = repository.loadData(displayName)
 
@@ -180,6 +182,21 @@ class MainAppState(
     fun removeAssignment(assignment: DutyAssignment) {
         assignments = assignments - assignment
         saveData()
+    }
+
+    fun createFairPlan(replaceExisting: Boolean) {
+        val currentTeam = team
+
+        if (currentTeam != null && events.isNotEmpty() && duties.isNotEmpty()) {
+            assignments = dutyAssignmentService.createFairAssignments(
+                team = currentTeam,
+                events = events,
+                duties = duties,
+                currentAssignments = assignments,
+                replaceExisting = replaceExisting
+            )
+            saveData()
+        }
     }
 
     private fun saveData() {

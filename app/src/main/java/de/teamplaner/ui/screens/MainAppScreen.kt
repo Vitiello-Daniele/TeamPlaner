@@ -115,6 +115,7 @@ fun MainAppScreen(
                 canManageAssignments = appState.isTrainer,
                 onDutyAssign = appState::assignDuty,
                 onAssignmentRemove = appState::removeAssignment,
+                onFairPlanCreate = appState::createFairPlan,
                 modifier = Modifier.padding(innerPadding)
             )
         }
