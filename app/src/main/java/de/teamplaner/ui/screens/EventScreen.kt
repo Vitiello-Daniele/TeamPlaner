@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import de.teamplaner.model.Duty
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamEventType
@@ -43,9 +44,11 @@ fun EventScreen(
     currentMember: TeamMember?,
     canManageEvents: Boolean,
     events: List<TeamEvent>,
+    duties: List<Duty>,
     onEventCreate: (TeamEvent) -> Unit,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit,
+    onAutoAssign: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var eventView by remember { mutableStateOf<EventView>(EventView.List) }
@@ -54,6 +57,7 @@ fun EventScreen(
         EventView.List -> EventListScreen(
             team = team,
             events = events,
+            duties = duties,
             canManageEvents = canManageEvents,
             onCreateClick = { eventView = EventView.Form(event = null) },
             onEventOpen = { event -> eventView = EventView.Detail(event) },
@@ -65,15 +69,19 @@ fun EventScreen(
             } else {
                 EventFormScreen(
                     team = team,
+                    duties = duties,
                     editedEvent = currentView.event,
                     onBackClick = { eventView = EventView.List },
-                    onEventSave = { event ->
+                    onEventSave = { event, shouldAutoAssign ->
                         val editedEvent = currentView.event
 
                         if (editedEvent == null) {
                             onEventCreate(event)
                         } else {
                             onEventUpdate(editedEvent, event)
+                        }
+                        if (shouldAutoAssign) {
+                            onAutoAssign()
                         }
                         eventView = EventView.List
                     },
@@ -82,7 +90,9 @@ fun EventScreen(
             }
         }
         is EventView.Detail -> EventDetailScreen(
+            team = team,
             event = currentView.event,
+            duties = duties,
             currentMember = currentMember,
             canManageEvents = canManageEvents,
             onBackClick = { eventView = EventView.List },
@@ -104,6 +114,7 @@ fun EventScreen(
 private fun EventListScreen(
     team: Team?,
     events: List<TeamEvent>,
+    duties: List<Duty>,
     canManageEvents: Boolean,
     onCreateClick: () -> Unit,
     onEventOpen: (TeamEvent) -> Unit,
@@ -155,6 +166,7 @@ private fun EventListScreen(
             events.forEach { event ->
                 EventListItem(
                     event = event,
+                    duties = duties,
                     onOpenClick = { onEventOpen(event) }
                 )
             }
@@ -165,9 +177,10 @@ private fun EventListScreen(
 @Composable
 private fun EventFormScreen(
     team: Team,
+    duties: List<Duty>,
     editedEvent: TeamEvent?,
     onBackClick: () -> Unit,
-    onEventSave: (TeamEvent) -> Unit,
+    onEventSave: (TeamEvent, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -182,6 +195,7 @@ private fun EventFormScreen(
         )
         EventForm(
             team = team,
+            duties = duties,
             editedEvent = editedEvent,
             onEventSave = onEventSave
         )
@@ -191,8 +205,9 @@ private fun EventFormScreen(
 @Composable
 private fun EventForm(
     team: Team,
+    duties: List<Duty>,
     editedEvent: TeamEvent?,
-    onEventSave: (TeamEvent) -> Unit
+    onEventSave: (TeamEvent, Boolean) -> Unit
 ) {
     var title by remember(editedEvent) { mutableStateOf(editedEvent?.title.orEmpty()) }
     var date by remember(editedEvent) { mutableStateOf(editedEvent?.date.orEmpty()) }
@@ -202,8 +217,19 @@ private fun EventForm(
         mutableStateOf(editedEvent?.type ?: TeamEventType.Training)
     }
     var selectedMembers by remember(team, editedEvent) {
-        mutableStateOf(editedEvent?.teilnahmen?.map { it.member }?.toSet() ?: team.members.toSet())
+        val selectedMemberIds = editedEvent?.teilnahmen?.map { it.memberId }?.toSet()
+        mutableStateOf(
+            if (selectedMemberIds == null) {
+                team.members.toSet()
+            } else {
+                team.members.filter { it.id in selectedMemberIds }.toSet()
+            }
+        )
     }
+    var selectedDutyIds by remember(duties, editedEvent) {
+        mutableStateOf(editedEvent?.dutyIds?.toSet() ?: duties.map { it.id }.toSet())
+    }
+    var shouldAutoAssign by remember(editedEvent) { mutableStateOf(editedEvent == null) }
     var errorText by remember(editedEvent) { mutableStateOf("") }
 
     AuthTextField(
@@ -242,6 +268,37 @@ private fun EventForm(
     )
 
     Text(
+        text = "Benötigte Dienste",
+        modifier = Modifier.fieldTopPadding(24),
+        style = MaterialTheme.typography.titleMedium
+    )
+    if (duties.isEmpty()) {
+        Text(
+            text = "Für dieses Team sind noch keine Dienste angelegt.",
+            modifier = Modifier.fieldTopPadding(8),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    } else {
+        duties.forEach { duty ->
+            DutySelectionRow(
+                duty = duty,
+                isSelected = selectedDutyIds.contains(duty.id),
+                onSelectedChange = { isSelected ->
+                    selectedDutyIds = if (isSelected) {
+                        selectedDutyIds + duty.id
+                    } else {
+                        selectedDutyIds - duty.id
+                    }
+                }
+            )
+        }
+        DutyAutoAssignRow(
+            isSelected = shouldAutoAssign,
+            onSelectedChange = { shouldAutoAssign = it }
+        )
+    }
+
+    Text(
         text = "Teilnehmer",
         modifier = Modifier.fieldTopPadding(24),
         style = MaterialTheme.typography.titleMedium
@@ -271,22 +328,27 @@ private fun EventForm(
                 trimmedDate.isBlank() -> errorText = "Bitte ein Datum eingeben"
                 trimmedTime.isBlank() -> errorText = "Bitte eine Uhrzeit eingeben"
                 selectedMembers.isEmpty() -> errorText = "Bitte mindestens einen Teilnehmer auswählen"
+                selectedDutyIds.isEmpty() -> errorText = "Bitte mindestens einen Dienst auswählen"
                 else -> {
                     onEventSave(
                         TeamEvent(
+                            id = editedEvent?.id.orEmpty(),
+                            teamId = editedEvent?.teamId.orEmpty(),
                             type = eventType,
                             title = trimmedTitle,
                             date = trimmedDate,
                             time = trimmedTime,
                             location = location.trim(),
+                            dutyIds = selectedDutyIds.toList(),
                             teilnahmen = selectedMembers.map { member ->
-                                editedEvent?.teilnahmen?.firstOrNull { it.member == member }
+                                editedEvent?.teilnahmen?.firstOrNull { it.memberId == member.id }
                                     ?: Teilnahme(
-                                        member = member,
+                                        memberId = member.id,
                                         status = TeilnahmeStatus.Offen
                                     )
                             }
-                        )
+                        ),
+                        shouldAutoAssign
                     )
                 }
             }
@@ -325,6 +387,47 @@ private fun EventTypeSelection(
 }
 
 @Composable
+private fun DutySelectionRow(
+    duty: Duty,
+    isSelected: Boolean,
+    onSelectedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = defaultActionModifier(topPadding = 8),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = isSelected,
+            onCheckedChange = onSelectedChange
+        )
+        Text(
+            text = duty.title,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
+@Composable
+private fun DutyAutoAssignRow(
+    isSelected: Boolean,
+    onSelectedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = defaultActionModifier(topPadding = 8),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = isSelected,
+            onCheckedChange = onSelectedChange
+        )
+        Text(
+            text = "Nach dem Speichern automatisch zuweisen",
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+
+@Composable
 private fun ParticipantRow(
     member: TeamMember,
     isSelected: Boolean,
@@ -348,11 +451,13 @@ private fun ParticipantRow(
 @Composable
 private fun EventListItem(
     event: TeamEvent,
+    duties: List<Duty>,
     onOpenClick: () -> Unit
 ) {
     val offene = event.teilnahmen.count { it.status == TeilnahmeStatus.Offen }
     val zugesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Zugesagt }
     val abgesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Abgesagt }
+    val eventDuties = duties.filter { it.id in event.dutyIds }
 
     Card(
         modifier = Modifier
@@ -388,13 +493,24 @@ private fun EventListItem(
                 modifier = Modifier.fieldTopPadding(8),
                 style = MaterialTheme.typography.bodyMedium
             )
+            Text(
+                text = if (eventDuties.isEmpty()) {
+                    "Keine Dienste ausgewählt"
+                } else {
+                    "Dienste: ${eventDuties.joinToString { it.title }}"
+                },
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 }
 
 @Composable
 private fun EventDetailScreen(
+    team: Team?,
     event: TeamEvent,
+    duties: List<Duty>,
     currentMember: TeamMember?,
     canManageEvents: Boolean,
     onBackClick: () -> Unit,
@@ -406,6 +522,7 @@ private fun EventDetailScreen(
     val offene = event.teilnahmen.count { it.status == TeilnahmeStatus.Offen }
     val zugesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Zugesagt }
     val abgesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Abgesagt }
+    val eventDuties = duties.filter { it.id in event.dutyIds }
 
     Column(
         modifier = modifier
@@ -443,6 +560,15 @@ private fun EventDetailScreen(
             modifier = Modifier.fieldTopPadding(16),
             style = MaterialTheme.typography.bodyLarge
         )
+        Text(
+            text = if (eventDuties.isEmpty()) {
+                "Keine Dienste ausgewählt"
+            } else {
+                "Dienste: ${eventDuties.joinToString { it.title }}"
+            },
+            modifier = Modifier.fieldTopPadding(16),
+            style = MaterialTheme.typography.bodyLarge
+        )
 
         Text(
             text = "Teilnehmer",
@@ -450,15 +576,17 @@ private fun EventDetailScreen(
             style = MaterialTheme.typography.titleMedium
         )
         event.teilnahmen.forEach { teilnahme ->
+            val member = team?.members?.firstOrNull { it.id == teilnahme.memberId }
             TeilnahmeRow(
                 teilnahme = teilnahme,
-                canEditStatus = canManageEvents || teilnahme.member == currentMember,
+                memberName = member?.name ?: "Unbekanntes Mitglied",
+                canEditStatus = canManageEvents || teilnahme.memberId == currentMember?.id,
                 onStatusChange = { status ->
                     onEventUpdate(
                         event,
                         event.copy(
                             teilnahmen = event.teilnahmen.map {
-                                if (it == teilnahme) {
+                                if (it.memberId == teilnahme.memberId) {
                                     it.copy(status = status)
                                 } else {
                                     it
@@ -490,11 +618,12 @@ private fun EventDetailScreen(
 @Composable
 private fun TeilnahmeRow(
     teilnahme: Teilnahme,
+    memberName: String,
     canEditStatus: Boolean,
     onStatusChange: (TeilnahmeStatus) -> Unit
 ) {
     Text(
-        text = "${teilnahme.member.name}: ${teilnahme.status.label}",
+        text = "$memberName: ${teilnahme.status.label}",
         modifier = Modifier.fieldTopPadding(8),
         style = MaterialTheme.typography.bodyMedium
     )

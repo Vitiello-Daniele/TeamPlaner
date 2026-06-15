@@ -18,11 +18,19 @@ class MainAppState(
     private val displayName: String,
     private val repository: TeamPlanerRepository = FakeTeamPlanerRepository(),
     private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator(),
+    private val idGenerator: IdGenerator = IdGenerator(),
     private val dutyAssignmentService: DutyAssignmentService = DutyAssignmentService()
 ) {
     private val initialData = repository.loadData(displayName)
 
-    var team by mutableStateOf(initialData.team)
+    private var allTeams by mutableStateOf(initialData.teams)
+
+    val teams: List<Team>
+        get() = allTeams.filter { team ->
+            team.members.any { it.name == displayName }
+        }
+
+    var selectedTeamId by mutableStateOf(teams.firstOrNull()?.id)
         private set
 
     var events by mutableStateOf(initialData.events)
@@ -36,44 +44,89 @@ class MainAppState(
 
     private var inviteCodeNumber = 1
 
+    val selectedTeam: Team?
+        get() = teams.firstOrNull { it.id == selectedTeamId }
+
     val currentMember: TeamMember?
-        get() = team?.members?.firstOrNull { it.name == displayName }
+        get() = selectedTeam?.members?.firstOrNull { it.name == displayName }
 
     val isTrainer: Boolean
         get() = currentMember?.role == TeamRole.Trainer
 
+    val trainerTeams: List<Team>
+        get() = teams.filter(::canManageTeam)
+
+    fun selectTeam(teamId: String) {
+        selectedTeamId = teamId
+    }
+
+    fun memberForTeam(team: Team): TeamMember? {
+        return team.members.firstOrNull { it.name == displayName }
+    }
+
+    fun canManageTeam(team: Team): Boolean {
+        return memberForTeam(team)?.role == TeamRole.Trainer
+    }
+
+    fun teamEvents(teamId: String): List<TeamEvent> {
+        return events.filter { it.teamId == teamId }
+    }
+
+    fun teamDuties(teamId: String): List<Duty> {
+        return duties.filter { it.teamId == teamId }
+    }
+
+    fun teamAssignments(teamId: String): List<DutyAssignment> {
+        val eventIds = teamEvents(teamId).map { it.id }.toSet()
+        return assignments.filter { it.eventId in eventIds }
+    }
+
     fun createTeam(teamName: String) {
-        team = Team(
+        val teamId = idGenerator.create("team")
+        val team = Team(
+            id = teamId,
             name = teamName,
             inviteCode = inviteCodeGenerator.create(teamName, inviteCodeNumber),
             inviteCodeActive = true,
             members = listOf(
                 TeamMember(
+                    id = idGenerator.create("member"),
                     name = displayName,
                     role = TeamRole.Trainer
                 )
             )
         )
+
+        allTeams = allTeams + team
+        selectedTeamId = teamId
         saveData()
     }
 
     fun joinTeam(inviteCode: String) {
-        team = Team(
-            name = "Team $inviteCode",
-            inviteCode = inviteCode,
-            inviteCodeActive = true,
-            members = listOf(
-                TeamMember(
+        val trimmedCode = inviteCode.trim()
+        val existingTeam = allTeams.firstOrNull {
+            it.inviteCodeActive && it.inviteCode.equals(trimmedCode, ignoreCase = true)
+        } ?: return
+        val alreadyMember = existingTeam.members.any { it.name == displayName }
+        val updatedTeam = if (alreadyMember) {
+            existingTeam
+        } else {
+            existingTeam.copy(
+                members = existingTeam.members + TeamMember(
+                    id = idGenerator.create("member"),
                     name = displayName,
                     role = TeamRole.Member
                 )
             )
-        )
+        }
+
+        replaceTeam(updatedTeam)
+        selectedTeamId = updatedTeam.id
         saveData()
     }
 
     fun addMember(memberName: String) {
-        val currentTeam = team
+        val currentTeam = selectedTeam
         val trimmedName = memberName.trim()
 
         if (
@@ -81,10 +134,13 @@ class MainAppState(
             trimmedName.isNotBlank() &&
             currentTeam.members.none { it.name == trimmedName }
         ) {
-            team = currentTeam.copy(
-                members = currentTeam.members + TeamMember(
-                    name = trimmedName,
-                    role = TeamRole.Member
+            replaceTeam(
+                currentTeam.copy(
+                    members = currentTeam.members + TeamMember(
+                        id = idGenerator.create("member"),
+                        name = trimmedName,
+                        role = TeamRole.Member
+                    )
                 )
             )
             saveData()
@@ -92,117 +148,152 @@ class MainAppState(
     }
 
     fun removeMember(member: TeamMember) {
-        val currentTeam = team
+        val currentTeam = selectedTeam
 
         if (currentTeam != null && member.role != TeamRole.Trainer) {
-            team = currentTeam.copy(
-                members = currentTeam.members - member
+            replaceTeam(
+                currentTeam.copy(
+                    members = currentTeam.members.filterNot { it.id == member.id }
+                )
             )
             events = events.map { event ->
                 event.copy(
                     teilnahmen = event.teilnahmen.filterNot {
-                        it.member == member
+                        it.memberId == member.id
                     }
                 )
             }
-            assignments = assignments.filterNot { it.member == member }
+            assignments = assignments.filterNot { it.memberId == member.id }
             saveData()
         }
     }
 
     fun refreshInviteCode() {
-        val currentTeam = team
+        val currentTeam = selectedTeam
 
         if (currentTeam != null) {
             val nextNumber = inviteCodeNumber + 1
             inviteCodeNumber = nextNumber
-            team = currentTeam.copy(
-                inviteCode = inviteCodeGenerator.create(currentTeam.name, nextNumber),
-                inviteCodeActive = true
+            replaceTeam(
+                currentTeam.copy(
+                    inviteCode = inviteCodeGenerator.create(currentTeam.name, nextNumber),
+                    inviteCodeActive = true
+                )
             )
             saveData()
         }
     }
 
     fun deactivateInviteCode() {
-        val currentTeam = team
+        val currentTeam = selectedTeam
 
         if (currentTeam != null) {
-            team = currentTeam.copy(inviteCodeActive = false)
+            replaceTeam(currentTeam.copy(inviteCodeActive = false))
             saveData()
         }
     }
 
     fun createEvent(event: TeamEvent) {
-        events = events + event
+        val teamId = selectedTeamId ?: return
+        events = events + event.copy(
+            id = event.id.ifBlank { idGenerator.create("event") },
+            teamId = teamId
+        )
         saveData()
     }
 
     fun updateEvent(oldEvent: TeamEvent, newEvent: TeamEvent) {
-        val eventIndex = events.indexOf(oldEvent)
+        val eventIndex = events.indexOfFirst { it.id == oldEvent.id }
 
         if (eventIndex >= 0) {
+            val updatedEvent = newEvent.copy(
+                id = oldEvent.id,
+                teamId = oldEvent.teamId
+            )
+
             events = events.toMutableList().also {
-                it[eventIndex] = newEvent
+                it[eventIndex] = updatedEvent
+            }
+            assignments = assignments.filterNot { assignment ->
+                assignment.eventId == updatedEvent.id && assignment.dutyId !in updatedEvent.dutyIds
             }
             saveData()
         }
     }
 
     fun removeEvent(event: TeamEvent) {
-        events = events - event
-        assignments = assignments.filterNot { it.event == event }
+        events = events.filterNot { it.id == event.id }
+        assignments = assignments.filterNot { it.eventId == event.id }
         saveData()
     }
 
     fun createDuty(duty: Duty) {
-        duties = duties + duty
+        val teamId = selectedTeamId ?: return
+        duties = duties + duty.copy(
+            id = duty.id.ifBlank { idGenerator.create("duty") },
+            teamId = teamId
+        )
         saveData()
     }
 
     fun removeDuty(duty: Duty) {
-        duties = duties - duty
-        assignments = assignments.filterNot { it.duty == duty }
+        duties = duties.filterNot { it.id == duty.id }
+        events = events.map { event ->
+            event.copy(dutyIds = event.dutyIds.filterNot { it == duty.id })
+        }
+        assignments = assignments.filterNot { it.dutyId == duty.id }
         saveData()
     }
 
     fun assignDuty(event: TeamEvent, duty: Duty, member: TeamMember) {
         assignments = assignments
-            .filterNot { it.event == event && it.duty == duty }
+            .filterNot { it.eventId == event.id && it.dutyId == duty.id }
             .plus(
                 DutyAssignment(
-                    event = event,
-                    duty = duty,
-                    member = member
+                    id = idGenerator.create("assignment"),
+                    eventId = event.id,
+                    dutyId = duty.id,
+                    memberId = member.id
                 )
             )
         saveData()
     }
 
     fun removeAssignment(assignment: DutyAssignment) {
-        assignments = assignments - assignment
+        assignments = assignments.filterNot { it.id == assignment.id }
         saveData()
     }
 
     fun createFairPlan(replaceExisting: Boolean) {
-        val currentTeam = team
+        val currentTeam = selectedTeam ?: return
+        val currentEvents = teamEvents(currentTeam.id)
+        val currentDuties = teamDuties(currentTeam.id)
+        val currentEventIds = currentEvents.map { it.id }.toSet()
+        val otherAssignments = assignments.filterNot { it.eventId in currentEventIds }
+        val currentAssignments = teamAssignments(currentTeam.id)
 
-        if (currentTeam != null && events.isNotEmpty() && duties.isNotEmpty()) {
-            assignments = dutyAssignmentService.createFairAssignments(
+        if (currentEvents.isNotEmpty() && currentDuties.isNotEmpty()) {
+            assignments = otherAssignments + dutyAssignmentService.createFairAssignments(
                 team = currentTeam,
-                events = events,
-                duties = duties,
-                currentAssignments = assignments,
+                events = currentEvents,
+                duties = currentDuties,
+                currentAssignments = currentAssignments,
                 replaceExisting = replaceExisting
             )
             saveData()
         }
     }
 
+    private fun replaceTeam(team: Team) {
+        allTeams = allTeams.map {
+            if (it.id == team.id) team else it
+        }
+    }
+
     private fun saveData() {
         repository.saveData(
             TeamPlanerData(
-                team = team,
+                teams = allTeams,
                 events = events,
                 duties = duties,
                 assignments = assignments

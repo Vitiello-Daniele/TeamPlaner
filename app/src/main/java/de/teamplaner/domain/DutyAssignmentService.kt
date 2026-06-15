@@ -20,13 +20,15 @@ class DutyAssignmentService {
             currentAssignments
         }.toMutableList()
         val assignmentCounts = result
-            .groupingBy { it.member }
+            .groupingBy { it.memberId }
             .eachCount()
             .toMutableMap()
 
         events.forEach { event ->
-            duties.forEach { duty ->
-                val alreadyAssigned = result.any { it.event == event && it.duty == duty }
+            val eventDuties = duties.filter { it.id in event.dutyIds }
+
+            eventDuties.forEach { duty ->
+                val alreadyAssigned = result.any { it.eventId == event.id && it.dutyId == duty.id }
 
                 if (!alreadyAssigned) {
                     val member = findNextMember(
@@ -38,11 +40,12 @@ class DutyAssignmentService {
 
                     if (member != null) {
                         result += DutyAssignment(
-                            event = event,
-                            duty = duty,
-                            member = member
+                            id = "assignment-${event.id}-${duty.id}",
+                            eventId = event.id,
+                            dutyId = duty.id,
+                            memberId = member.id
                         )
-                        assignmentCounts[member] = (assignmentCounts[member] ?: 0) + 1
+                        assignmentCounts[member.id] = (assignmentCounts[member.id] ?: 0) + 1
                     }
                 }
             }
@@ -55,17 +58,17 @@ class DutyAssignmentService {
         members: List<TeamMember>,
         event: TeamEvent,
         assignments: List<DutyAssignment>,
-        assignmentCounts: Map<TeamMember, Int>
+        assignmentCounts: Map<String, Int>
     ): TeamMember? {
         val membersAlreadyUsedForEvent = assignments
-            .filter { it.event == event }
-            .map { it.member }
+            .filter { it.eventId == event.id }
+            .map { it.memberId }
             .toSet()
-        val preferredMembers = members.filterNot { it in membersAlreadyUsedForEvent }
+        val preferredMembers = members.filterNot { it.id in membersAlreadyUsedForEvent }
         val candidates = preferredMembers.ifEmpty { members }
 
         return candidates.minWithOrNull(
-            compareBy<TeamMember> { assignmentCounts[it] ?: 0 }
+            compareBy<TeamMember> { assignmentCounts[it.id] ?: 0 }
                 .thenBy { it.name }
         )
     }

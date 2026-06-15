@@ -14,7 +14,7 @@ import androidx.compose.ui.text.input.KeyboardType
 
 @Composable
 fun LoginScreen(
-    onLoginClick: () -> Unit,
+    onLoginClick: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
@@ -40,10 +40,24 @@ fun LoginScreen(
             isPassword = true
         )
         Button(
-            onClick = onLoginClick,
+            onClick = {
+                onLoginClick(email.substringBefore("@").ifBlank { "Daniele V." })
+            },
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = "Einloggen")
+        }
+        OutlinedButton(
+            onClick = { onLoginClick("Daniele V.") },
+            modifier = defaultActionModifier(topPadding = 12)
+        ) {
+            Text(text = "DEBUG: Trainerlogin")
+        }
+        OutlinedButton(
+            onClick = { onLoginClick("Leon M.") },
+            modifier = defaultActionModifier(topPadding = 12)
+        ) {
+            Text(text = "DEBUG: Spielerlogin")
         }
         OutlinedButton(
             onClick = onBackClick,

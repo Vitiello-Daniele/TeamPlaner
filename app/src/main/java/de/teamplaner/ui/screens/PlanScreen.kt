@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -20,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import de.teamplaner.model.Duty
 import de.teamplaner.model.DutyAssignment
@@ -119,6 +121,8 @@ private fun PlanListScreen(
         )
         MyAssignments(
             currentMember = currentMember,
+            events = events,
+            duties = duties,
             assignments = assignments
         )
 
@@ -156,10 +160,14 @@ private fun PlanListScreen(
             )
         } else {
             events.forEach { event ->
+                val eventDuties = dutiesForEvent(event, duties)
                 EventAssignmentCard(
                     event = event,
-                    duties = duties,
-                    assignments = assignments.filter { it.event == event },
+                    duties = eventDuties,
+                    assignments = assignments.filter { it.eventId == event.id },
+                    team = team,
+                    events = events,
+                    currentMember = currentMember,
                     canManageAssignments = canManageAssignments,
                     onAssignmentEdit = onAssignmentEdit,
                     onAssignmentRemove = onAssignmentRemove
@@ -219,8 +227,8 @@ private fun PlanSummary(
             Text(
                 text = planStatusText(
                     events = events,
-                    duties = duties,
-                    assignments = assignments
+                            duties = duties,
+                            assignments = assignments
                 ),
                 modifier = Modifier.fieldTopPadding(8),
                 style = MaterialTheme.typography.bodyMedium
@@ -241,13 +249,15 @@ private fun PlanSummary(
 @Composable
 private fun MyAssignments(
     currentMember: TeamMember?,
+    events: List<TeamEvent>,
+    duties: List<Duty>,
     assignments: List<DutyAssignment>
 ) {
     if (currentMember == null) {
         return
     }
 
-    val ownAssignments = assignments.filter { it.member == currentMember }
+    val ownAssignments = assignments.filter { it.memberId == currentMember.id }
 
     Card(
         modifier = Modifier
@@ -270,10 +280,10 @@ private fun MyAssignments(
                 )
             } else {
                 ownAssignments.forEach { assignment ->
-                    Text(
-                        text = "${assignment.event.title}: ${assignment.duty.title}",
-                        modifier = Modifier.fieldTopPadding(8),
-                        style = MaterialTheme.typography.bodyMedium
+                    OwnAssignmentCard(
+                        assignment = assignment,
+                        events = events,
+                        duties = duties
                     )
                 }
             }
@@ -292,7 +302,7 @@ private fun MemberLoadList(
         style = MaterialTheme.typography.titleSmall
     )
     members.forEach { member ->
-        val count = assignments.count { it.member == member }
+        val count = assignments.count { it.memberId == member.id }
 
         Text(
             text = "${member.name}: $count",
@@ -308,12 +318,15 @@ private fun EventAssignmentCard(
     event: TeamEvent,
     duties: List<Duty>,
     assignments: List<DutyAssignment>,
+    team: Team,
+    events: List<TeamEvent>,
+    currentMember: TeamMember?,
     canManageAssignments: Boolean,
     onAssignmentEdit: (DutyAssignment) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit
 ) {
     val missingDuties = duties.filterNot { duty ->
-        assignments.any { it.duty == duty }
+        assignments.any { it.dutyId == duty.id }
     }
 
     Card(
@@ -352,10 +365,12 @@ private fun EventAssignmentCard(
                 )
             } else {
                 assignments.forEach { assignment ->
-                    Text(
-                        text = "${assignment.duty.title}: ${assignment.member.name}",
-                        modifier = Modifier.fieldTopPadding(12),
-                        style = MaterialTheme.typography.bodyLarge
+                    AssignmentLine(
+                        assignment = assignment,
+                        team = team,
+                        events = events,
+                        duties = duties,
+                        isOwnAssignment = assignment.memberId == currentMember?.id
                     )
                     if (canManageAssignments) {
                         Button(
@@ -378,6 +393,78 @@ private fun EventAssignmentCard(
 }
 
 @Composable
+private fun OwnAssignmentCard(
+    assignment: DutyAssignment,
+    events: List<TeamEvent>,
+    duties: List<Duty>
+) {
+    val event = events.firstOrNull { it.id == assignment.eventId }
+    val duty = duties.firstOrNull { it.id == assignment.dutyId }
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFDFF5E6)
+        ),
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = event?.title ?: "Unbekannter Termin",
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = if (event == null) "Kein Datum" else "${event.date} um ${event.time}",
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = duty?.title ?: "Unbekannter Dienst",
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun AssignmentLine(
+    assignment: DutyAssignment,
+    team: Team,
+    events: List<TeamEvent>,
+    duties: List<Duty>,
+    isOwnAssignment: Boolean
+) {
+    val event = events.firstOrNull { it.id == assignment.eventId }
+    val duty = duties.firstOrNull { it.id == assignment.dutyId }
+    val member = team.members.firstOrNull { it.id == assignment.memberId }
+
+    Card(
+        colors = if (isOwnAssignment) {
+            CardDefaults.cardColors(containerColor = Color(0xFFDFF5E6))
+        } else {
+            CardDefaults.cardColors()
+        },
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "${duty?.title ?: "Unbekannter Dienst"}: ${member?.name ?: "Unbekanntes Mitglied"}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = if (event == null) "Kein Datum" else "${event.date} um ${event.time}",
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
 private fun AssignmentFormScreen(
     team: Team?,
     events: List<TeamEvent>,
@@ -388,18 +475,40 @@ private fun AssignmentFormScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedEvent by remember(editedAssignment) {
-        mutableStateOf(editedAssignment?.event ?: events.firstOrNull())
+        mutableStateOf(
+            editedAssignment?.let { assignment ->
+                events.firstOrNull { it.id == assignment.eventId }
+            } ?: events.firstOrNull()
+        )
     }
     var selectedDuty by remember(editedAssignment) {
-        mutableStateOf(editedAssignment?.duty ?: duties.firstOrNull())
+        val firstEvent = editedAssignment?.let { assignment ->
+            events.firstOrNull { it.id == assignment.eventId }
+        } ?: events.firstOrNull()
+        mutableStateOf(
+            editedAssignment?.let { assignment ->
+                duties.firstOrNull { it.id == assignment.dutyId }
+            } ?: firstEvent?.let { dutiesForEvent(it, duties).firstOrNull() }
+        )
     }
     var memberQuery by remember(editedAssignment) {
-        mutableStateOf(editedAssignment?.member?.name.orEmpty())
+        mutableStateOf(
+            editedAssignment?.let { assignment ->
+                team?.members?.firstOrNull { it.id == assignment.memberId }?.name
+            }.orEmpty()
+        )
     }
     var selectedMember by remember(editedAssignment) {
-        mutableStateOf(editedAssignment?.member)
+        mutableStateOf(
+            editedAssignment?.let { assignment ->
+                team?.members?.firstOrNull { it.id == assignment.memberId }
+            }
+        )
     }
     var errorText by remember { mutableStateOf("") }
+    val visibleDuties = selectedEvent?.let { event ->
+        dutiesForEvent(event, duties)
+    } ?: emptyList()
 
     Column(
         modifier = modifier
@@ -426,10 +535,20 @@ private fun AssignmentFormScreen(
             modifier = Modifier.fieldTopPadding(24),
             style = MaterialTheme.typography.titleMedium
         )
+        if (events.isEmpty()) {
+            Text(
+                text = "Lege zuerst einen Termin an.",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
         events.forEach { event ->
             FilterChip(
-                selected = selectedEvent == event,
-                onClick = { selectedEvent = event },
+                selected = selectedEvent?.id == event.id,
+                onClick = {
+                    selectedEvent = event
+                    selectedDuty = dutiesForEvent(event, duties).firstOrNull()
+                },
                 label = { Text(text = event.title) },
                 modifier = Modifier.fieldTopPadding(8)
             )
@@ -440,9 +559,22 @@ private fun AssignmentFormScreen(
             modifier = Modifier.fieldTopPadding(24),
             style = MaterialTheme.typography.titleMedium
         )
-        duties.forEach { duty ->
+        if (selectedEvent == null) {
+            Text(
+                text = "Wähle zuerst einen Termin aus.",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else if (visibleDuties.isEmpty()) {
+            Text(
+                text = "Für diesen Termin sind keine Dienste ausgewählt.",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        visibleDuties.forEach { duty ->
             FilterChip(
-                selected = selectedDuty == duty,
+                selected = selectedDuty?.id == duty.id,
                 onClick = { selectedDuty = duty },
                 label = { Text(text = duty.title) },
                 modifier = Modifier.fieldTopPadding(8)
@@ -475,8 +607,8 @@ private fun AssignmentFormScreen(
 
                 when {
                     events.isEmpty() -> errorText = "Bitte zuerst einen Termin anlegen"
-                    duties.isEmpty() -> errorText = "Bitte zuerst einen Dienst anlegen"
                     event == null -> errorText = "Bitte einen Termin auswählen"
+                    visibleDuties.isEmpty() -> errorText = "Bitte im Termin zuerst Dienste auswählen"
                     duty == null -> errorText = "Bitte einen Dienst auswählen"
                     member == null -> errorText = "Bitte ein Mitglied auswählen"
                     else -> onDutyAssign(event, duty, member)
@@ -502,7 +634,9 @@ private fun planStatusText(
     duties: List<Duty>,
     assignments: List<DutyAssignment>
 ): String {
-    val expectedAssignments = events.size * duties.size
+    val expectedAssignments = events.sumOf { event ->
+        dutiesForEvent(event, duties).size
+    }
     val missingAssignments = expectedAssignments - assignments.size
 
     return if (expectedAssignments == 0) {
@@ -512,6 +646,13 @@ private fun planStatusText(
     } else {
         "Plan unvollständig: $missingAssignments Zuweisungen fehlen"
     }
+}
+
+private fun dutiesForEvent(
+    event: TeamEvent,
+    duties: List<Duty>
+): List<Duty> {
+    return duties.filter { it.id in event.dutyIds }
 }
 
 @Composable

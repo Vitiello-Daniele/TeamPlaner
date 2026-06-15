@@ -6,7 +6,7 @@ import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 
 data class TeamPlanerData(
-    val team: Team?,
+    val teams: List<Team>,
     val events: List<TeamEvent>,
     val duties: List<Duty>,
     val assignments: List<DutyAssignment>

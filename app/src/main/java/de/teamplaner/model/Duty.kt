@@ -1,6 +1,8 @@
 package de.teamplaner.model
 
 data class Duty(
+    val id: String = "",
+    val teamId: String = "",
     val type: DutyType,
     val title: String,
     val description: String
@@ -16,7 +18,8 @@ enum class DutyType(val label: String, val defaultDescription: String) {
 }
 
 data class DutyAssignment(
-    val event: TeamEvent,
-    val duty: Duty,
-    val member: TeamMember
+    val id: String = "",
+    val eventId: String,
+    val dutyId: String,
+    val memberId: String
 )

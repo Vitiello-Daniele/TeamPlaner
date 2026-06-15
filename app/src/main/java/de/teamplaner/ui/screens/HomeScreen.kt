@@ -37,8 +37,8 @@ fun HomeScreen() {
                 onRegistrationClick = { currentView = HomeView.Registration }
             )
             HomeView.Login -> LoginScreen(
-                onLoginClick = {
-                    profileName = ""
+                onLoginClick = { name ->
+                    profileName = name
                     currentView = HomeView.App
                 },
                 onBackClick = { currentView = HomeView.Start }

@@ -1,11 +1,14 @@
 package de.teamplaner.model
 
 data class TeamEvent(
+    val id: String = "",
+    val teamId: String = "",
     val type: TeamEventType,
     val title: String,
     val date: String,
     val time: String,
     val location: String,
+    val dutyIds: List<String> = emptyList(),
     val teilnahmen: List<Teilnahme>
 )
 
@@ -16,7 +19,7 @@ enum class TeamEventType(val label: String) {
 }
 
 data class Teilnahme(
-    val member: TeamMember,
+    val memberId: String,
     val status: TeilnahmeStatus
 )
 

@@ -160,9 +160,9 @@ private fun DutyFormScreen(
     onDutyCreate: (Duty) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
     var dutyType by remember { mutableStateOf(DutyType.Jersey) }
+    var title by remember { mutableStateOf(dutyType.label) }
+    var description by remember { mutableStateOf(dutyType.defaultDescription) }
     var errorText by remember { mutableStateOf("") }
 
     Column(
