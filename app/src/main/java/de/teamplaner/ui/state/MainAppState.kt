@@ -12,6 +12,9 @@ import de.teamplaner.model.DutyAssignment
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
+import de.teamplaner.model.TeamRequest
+import de.teamplaner.model.TeamRequestStatus
+import de.teamplaner.model.TeamRequestType
 import de.teamplaner.model.TeamRole
 
 class MainAppState(
@@ -42,6 +45,9 @@ class MainAppState(
     var assignments by mutableStateOf(initialData.assignments)
         private set
 
+    var requests by mutableStateOf(initialData.requests)
+        private set
+
     private var inviteCodeNumber = 1
 
     val selectedTeam: Team?
@@ -55,6 +61,20 @@ class MainAppState(
 
     val trainerTeams: List<Team>
         get() = teams.filter(::canManageTeam)
+
+    val openInvites: List<TeamRequest>
+        get() = requests.filter {
+            it.userName == displayName &&
+                it.type == TeamRequestType.Invite &&
+                it.status == TeamRequestStatus.Open
+        }
+
+    val openJoinRequests: List<TeamRequest>
+        get() = requests.filter {
+            it.userName == displayName &&
+                it.type == TeamRequestType.JoinRequest &&
+                it.status == TeamRequestStatus.Open
+        }
 
     fun selectTeam(teamId: String) {
         selectedTeamId = teamId
@@ -107,44 +127,101 @@ class MainAppState(
         val existingTeam = allTeams.firstOrNull {
             it.inviteCodeActive && it.inviteCode.equals(trimmedCode, ignoreCase = true)
         } ?: return
-        val alreadyMember = existingTeam.members.any { it.name == displayName }
-        val updatedTeam = if (alreadyMember) {
-            existingTeam
-        } else {
-            existingTeam.copy(
-                members = existingTeam.members + TeamMember(
-                    id = idGenerator.create("member"),
-                    name = displayName,
-                    role = TeamRole.Member
-                )
-            )
+
+        if (existingTeam.members.any { it.name == displayName }) {
+            selectedTeamId = existingTeam.id
+            return
         }
 
-        replaceTeam(updatedTeam)
-        selectedTeamId = updatedTeam.id
+        val alreadyOpen = requests.any {
+            it.teamId == existingTeam.id &&
+                it.userName == displayName &&
+                it.type == TeamRequestType.JoinRequest &&
+                it.status == TeamRequestStatus.Open
+        }
+
+        if (!alreadyOpen) {
+            requests = requests + TeamRequest(
+                id = idGenerator.create("request"),
+                teamId = existingTeam.id,
+                userName = displayName,
+                type = TeamRequestType.JoinRequest,
+                status = TeamRequestStatus.Open
+            )
+        }
         saveData()
     }
 
-    fun addMember(memberName: String) {
+    fun inviteMember(memberName: String) {
         val currentTeam = selectedTeam
         val trimmedName = memberName.trim()
 
         if (
             currentTeam != null &&
             trimmedName.isNotBlank() &&
-            currentTeam.members.none { it.name == trimmedName }
+            currentTeam.members.none { it.name == trimmedName } &&
+            requests.none {
+                it.teamId == currentTeam.id &&
+                    it.userName == trimmedName &&
+                    it.type == TeamRequestType.Invite &&
+                    it.status == TeamRequestStatus.Open
+            }
         ) {
+            requests = requests + TeamRequest(
+                id = idGenerator.create("request"),
+                teamId = currentTeam.id,
+                userName = trimmedName,
+                type = TeamRequestType.Invite,
+                status = TeamRequestStatus.Open
+            )
+            saveData()
+        }
+    }
+
+    fun openJoinRequests(teamId: String): List<TeamRequest> {
+        return requests.filter {
+            it.teamId == teamId &&
+                it.type == TeamRequestType.JoinRequest &&
+                it.status == TeamRequestStatus.Open
+        }
+    }
+
+    fun openInvites(teamId: String): List<TeamRequest> {
+        return requests.filter {
+            it.teamId == teamId &&
+                it.type == TeamRequestType.Invite &&
+                it.status == TeamRequestStatus.Open
+        }
+    }
+
+    fun teamName(teamId: String): String {
+        return allTeams.firstOrNull { it.id == teamId }?.name ?: "Unbekanntes Team"
+    }
+
+    fun acceptRequest(request: TeamRequest) {
+        val team = allTeams.firstOrNull { it.id == request.teamId } ?: return
+        val alreadyMember = team.members.any { it.name == request.userName }
+
+        if (!alreadyMember) {
             replaceTeam(
-                currentTeam.copy(
-                    members = currentTeam.members + TeamMember(
+                team.copy(
+                    members = team.members + TeamMember(
                         id = idGenerator.create("member"),
-                        name = trimmedName,
+                        name = request.userName,
                         role = TeamRole.Member
                     )
                 )
             )
-            saveData()
         }
+
+        updateRequestStatus(request, TeamRequestStatus.Accepted)
+        selectedTeamId = request.teamId
+        saveData()
+    }
+
+    fun rejectRequest(request: TeamRequest) {
+        updateRequestStatus(request, TeamRequestStatus.Rejected)
+        saveData()
     }
 
     fun removeMember(member: TeamMember) {
@@ -296,8 +373,22 @@ class MainAppState(
                 teams = allTeams,
                 events = events,
                 duties = duties,
-                assignments = assignments
+                assignments = assignments,
+                requests = requests
             )
         )
+    }
+
+    private fun updateRequestStatus(
+        request: TeamRequest,
+        status: TeamRequestStatus
+    ) {
+        requests = requests.map {
+            if (it.id == request.id) {
+                it.copy(status = status)
+            } else {
+                it
+            }
+        }
     }
 }

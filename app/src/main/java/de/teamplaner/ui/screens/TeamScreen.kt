@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -30,6 +32,7 @@ import de.teamplaner.model.DutyAssignment
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
+import de.teamplaner.model.TeamRequest
 import de.teamplaner.model.TeamRole
 
 private sealed interface TeamView {
@@ -56,11 +59,18 @@ fun TeamScreen(
     selectedTeamEvents: List<TeamEvent>,
     selectedTeamDuties: List<Duty>,
     selectedTeamAssignments: List<DutyAssignment>,
+    openInvites: List<TeamRequest>,
+    openJoinRequests: List<TeamRequest>,
+    selectedTeamJoinRequests: List<TeamRequest>,
+    selectedTeamInvites: List<TeamRequest>,
+    teamName: (String) -> String,
     onTeamSelect: (String) -> Unit,
     onTeamCreate: (String) -> Unit,
     onTeamJoin: (String) -> Unit,
-    onMemberAdd: (String) -> Unit,
+    onMemberInvite: (String) -> Unit,
     onMemberRemove: (TeamMember) -> Unit,
+    onRequestAccept: (TeamRequest) -> Unit,
+    onRequestReject: (TeamRequest) -> Unit,
     onInviteCodeRefresh: () -> Unit,
     onInviteCodeDeactivate: () -> Unit,
     onEventCreate: (TeamEvent) -> Unit,
@@ -78,8 +88,13 @@ fun TeamScreen(
     when (teamView) {
         TeamView.List -> TeamListContent(
             teams = teams,
+            openInvites = openInvites,
+            openJoinRequests = openJoinRequests,
+            teamName = teamName,
             onCreateClick = { teamView = TeamView.Create },
             onJoinClick = { teamView = TeamView.Join },
+            onInviteAccept = onRequestAccept,
+            onInviteReject = onRequestReject,
             onTeamClick = { team ->
                 onTeamSelect(team.id)
                 teamView = TeamView.Detail
@@ -97,7 +112,7 @@ fun TeamScreen(
         TeamView.Join -> JoinTeamContent(
             onJoinClick = { inviteCode ->
                 onTeamJoin(inviteCode)
-                teamView = TeamView.Detail
+                teamView = TeamView.List
             },
             onBackClick = { teamView = TeamView.List },
             modifier = modifier
@@ -113,9 +128,13 @@ fun TeamScreen(
                     events = selectedTeamEvents,
                     duties = selectedTeamDuties,
                     assignments = selectedTeamAssignments,
+                    joinRequests = selectedTeamJoinRequests,
+                    invites = selectedTeamInvites,
                     onBackClick = { teamView = TeamView.List },
-                    onMemberAdd = onMemberAdd,
+                    onMemberInvite = onMemberInvite,
                     onMemberRemove = onMemberRemove,
+                    onRequestAccept = onRequestAccept,
+                    onRequestReject = onRequestReject,
                     onInviteCodeRefresh = onInviteCodeRefresh,
                     onInviteCodeDeactivate = onInviteCodeDeactivate,
                     onEventCreate = onEventCreate,
@@ -136,8 +155,13 @@ fun TeamScreen(
 @Composable
 private fun TeamListContent(
     teams: List<Team>,
+    openInvites: List<TeamRequest>,
+    openJoinRequests: List<TeamRequest>,
+    teamName: (String) -> String,
     onCreateClick: () -> Unit,
     onJoinClick: () -> Unit,
+    onInviteAccept: (TeamRequest) -> Unit,
+    onInviteReject: (TeamRequest) -> Unit,
     onTeamClick: (Team) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -147,7 +171,6 @@ private fun TeamListContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -174,23 +197,67 @@ private fun TeamListContent(
                 style = MaterialTheme.typography.bodyLarge
             )
         } else {
-            filteredTeams.forEach { team ->
-                Card(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .widthIn(max = 520.dp)
-                        .fillMaxWidth()
-                        .clickable { onTeamClick(team) }
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = team.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = "${team.members.size} Mitglieder",
-                            modifier = Modifier.fieldTopPadding(4),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+            Text(
+                text = "Meine Teams",
+                modifier = Modifier.fieldTopPadding(20),
+                style = MaterialTheme.typography.titleMedium
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .weight(1f)
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth()
+            ) {
+                items(filteredTeams) { team ->
+                    TeamCompactRow(
+                        team = team,
+                        onTeamClick = { onTeamClick(team) }
+                    )
                 }
+            }
+        }
+
+        if (openInvites.isNotEmpty() || openJoinRequests.isNotEmpty()) {
+            Text(
+                text = "Offene Einladungen",
+                modifier = Modifier.fieldTopPadding(16),
+                style = MaterialTheme.typography.titleMedium
+            )
+            RequestList(
+                joinRequests = openJoinRequests,
+                invites = openInvites,
+                teamName = teamName,
+                onInviteAccept = onInviteAccept,
+                onRequestAccept = null,
+                onRequestReject = onInviteReject
+            )
+        }
+    }
+}
+
+@Composable
+private fun TeamCompactRow(
+    team: Team,
+    onTeamClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .padding(bottom = 8.dp)
+            .fillMaxWidth()
+            .clickable(onClick = onTeamClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = team.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "${team.members.size} Mitglieder",
+                    modifier = Modifier.fieldTopPadding(2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }
@@ -204,9 +271,13 @@ private fun TeamDetailContent(
     events: List<TeamEvent>,
     duties: List<Duty>,
     assignments: List<DutyAssignment>,
+    joinRequests: List<TeamRequest>,
+    invites: List<TeamRequest>,
     onBackClick: () -> Unit,
-    onMemberAdd: (String) -> Unit,
+    onMemberInvite: (String) -> Unit,
     onMemberRemove: (TeamMember) -> Unit,
+    onRequestAccept: (TeamRequest) -> Unit,
+    onRequestReject: (TeamRequest) -> Unit,
     onInviteCodeRefresh: () -> Unit,
     onInviteCodeDeactivate: () -> Unit,
     onEventCreate: (TeamEvent) -> Unit,
@@ -269,8 +340,12 @@ private fun TeamDetailContent(
             canManageTeam = canManageTeam,
             onBackClick = onBackClick,
             onTabSelect = { tab = it },
-            onMemberAdd = onMemberAdd,
+            onMemberInvite = onMemberInvite,
             onMemberRemove = onMemberRemove,
+            joinRequests = joinRequests,
+            invites = invites,
+            onRequestAccept = onRequestAccept,
+            onRequestReject = onRequestReject,
             onInviteCodeRefresh = onInviteCodeRefresh,
             onInviteCodeDeactivate = onInviteCodeDeactivate,
             modifier = modifier
@@ -298,8 +373,12 @@ private fun TeamDetailOverview(
     canManageTeam: Boolean,
     onBackClick: () -> Unit,
     onTabSelect: (TeamDetailTab) -> Unit,
-    onMemberAdd: (String) -> Unit,
+    onMemberInvite: (String) -> Unit,
     onMemberRemove: (TeamMember) -> Unit,
+    joinRequests: List<TeamRequest>,
+    invites: List<TeamRequest>,
+    onRequestAccept: (TeamRequest) -> Unit,
+    onRequestReject: (TeamRequest) -> Unit,
     onInviteCodeRefresh: () -> Unit,
     onInviteCodeDeactivate: () -> Unit,
     modifier: Modifier = Modifier
@@ -307,6 +386,90 @@ private fun TeamDetailOverview(
     var memberName by remember { mutableStateOf("") }
     var memberError by remember { mutableStateOf("") }
     val memberSuggestions = listOf("Leon M.", "Daniel", "David", "Dario", "Max", "Mia", "Laura", "Lea", "Tom", "Sara")
+
+    if (tab == TeamDetailTab.Members) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            ScreenHeader(title = team.name, onBackClick = onBackClick)
+            TeamDetailTabs(selectedTab = tab, onTabSelect = onTabSelect)
+
+            if (canManageTeam) {
+                Text(
+                    text = "Neues Mitglied einladen",
+                    modifier = Modifier.fieldTopPadding(16),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                AuthTextField(
+                    value = memberName,
+                    onValueChange = { memberName = it },
+                    label = "Mitgliedsname",
+                    modifier = Modifier.fieldTopPadding(12)
+                )
+                MemberSuggestions(
+                    query = memberName,
+                    existingMembers = team.members,
+                    suggestions = memberSuggestions,
+                    onSuggestionClick = { memberName = it }
+                )
+                Button(
+                    onClick = {
+                        val trimmedName = memberName.trim()
+
+                        if (trimmedName.isBlank()) {
+                            memberError = "Bitte einen Namen eingeben"
+                        } else if (team.members.any { it.name == trimmedName }) {
+                            memberError = "Dieses Mitglied ist schon im Team"
+                        } else {
+                            onMemberInvite(trimmedName)
+                            memberName = ""
+                            memberError = ""
+                        }
+                    },
+                    modifier = defaultActionModifier(topPadding = 12)
+                ) {
+                    Text(text = "Einladung senden")
+                }
+                if (memberError.isNotBlank()) {
+                    Text(
+                        text = memberError,
+                        modifier = Modifier.fieldTopPadding(8),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
+            if (canManageTeam && (joinRequests.isNotEmpty() || invites.isNotEmpty())) {
+                Text(
+                    text = "Offene Vorgänge",
+                    modifier = Modifier.fieldTopPadding(20),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                RequestList(
+                    joinRequests = joinRequests,
+                    invites = invites,
+                    onRequestAccept = onRequestAccept,
+                    onRequestReject = onRequestReject
+                )
+            }
+
+            Text(
+                text = "Mitglieder",
+                modifier = Modifier.fieldTopPadding(20),
+                style = MaterialTheme.typography.titleMedium
+            )
+            MemberList(
+                members = team.members,
+                canRemove = canManageTeam,
+                onMemberRemove = onMemberRemove,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        return
+    }
 
     Column(
         modifier = modifier
@@ -330,55 +493,6 @@ private fun TeamDetailOverview(
                 }
                 OutlinedButton(onClick = onInviteCodeDeactivate, modifier = defaultActionModifier(topPadding = 12)) {
                     Text(text = "Invite-Code deaktivieren")
-                }
-            }
-        }
-
-        if (tab == TeamDetailTab.Members) {
-            team.members.forEach { member ->
-                TeamMemberRow(
-                    member = member,
-                    canRemove = canManageTeam,
-                    onRemoveClick = { onMemberRemove(member) }
-                )
-            }
-            if (canManageTeam) {
-                AuthTextField(
-                    value = memberName,
-                    onValueChange = { memberName = it },
-                    label = "Mitgliedsname",
-                    modifier = Modifier.fieldTopPadding(24)
-                )
-                MemberSuggestions(
-                    query = memberName,
-                    existingMembers = team.members,
-                    suggestions = memberSuggestions,
-                    onSuggestionClick = { memberName = it }
-                )
-                Button(
-                    onClick = {
-                        val trimmedName = memberName.trim()
-
-                        if (trimmedName.isBlank()) {
-                            memberError = "Bitte einen Namen eingeben"
-                        } else if (team.members.any { it.name == trimmedName }) {
-                            memberError = "Dieses Mitglied ist schon im Team"
-                        } else {
-                            onMemberAdd(trimmedName)
-                            memberName = ""
-                            memberError = ""
-                        }
-                    },
-                    modifier = defaultActionModifier(topPadding = 12)
-                ) {
-                    Text(text = "Mitglied hinzufügen")
-                }
-                if (memberError.isNotBlank()) {
-                    Text(
-                        text = memberError,
-                        modifier = Modifier.fieldTopPadding(8),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
                 }
             }
         }
@@ -437,6 +551,145 @@ private fun MemberSuggestions(
             modifier = defaultActionModifier(topPadding = 8)
         ) {
             Text(text = suggestion)
+        }
+    }
+}
+
+@Composable
+private fun TeamRequestCard(
+    title: String,
+    subtitle: String,
+    onAcceptClick: (() -> Unit)?,
+    onRejectClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .widthIn(max = 520.dp)
+            .fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = subtitle,
+                modifier = Modifier.fieldTopPadding(4),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(modifier = Modifier.fieldTopPadding(12)) {
+                if (onAcceptClick != null) {
+                    Button(onClick = onAcceptClick) {
+                        Text(text = "Annehmen")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                OutlinedButton(onClick = onRejectClick) {
+                    Text(text = "Ablehnen")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RequestList(
+    joinRequests: List<TeamRequest>,
+    invites: List<TeamRequest>,
+    teamName: ((String) -> String)? = null,
+    onInviteAccept: ((TeamRequest) -> Unit)? = null,
+    onRequestAccept: ((TeamRequest) -> Unit)?,
+    onRequestReject: (TeamRequest) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .widthIn(max = 520.dp)
+            .fillMaxWidth()
+    ) {
+        joinRequests.forEach { request ->
+            CompactRequestRow(
+                title = teamName?.invoke(request.teamId) ?: request.userName,
+                subtitle = if (teamName == null) {
+                    "möchte beitreten"
+                } else {
+                    "Anfrage wartet auf Trainer"
+                },
+                onAcceptClick = onRequestAccept?.let { accept -> { accept(request) } },
+                onRejectClick = { onRequestReject(request) }
+            )
+        }
+        invites.forEach { invite ->
+            CompactRequestRow(
+                title = teamName?.invoke(invite.teamId) ?: invite.userName,
+                subtitle = if (teamName == null) {
+                    "Einladung offen"
+                } else {
+                    "Einladung zum Team"
+                },
+                onAcceptClick = onInviteAccept?.let { accept -> { accept(invite) } },
+                onRejectClick = { onRequestReject(invite) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactRequestRow(
+    title: String,
+    subtitle: String,
+    onAcceptClick: (() -> Unit)?,
+    onRejectClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .padding(top = 6.dp)
+            .fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = subtitle,
+                    modifier = Modifier.fieldTopPadding(2),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            if (onAcceptClick != null) {
+                Button(onClick = onAcceptClick) {
+                    Text(text = "OK")
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            OutlinedButton(onClick = onRejectClick) {
+                Text(text = "Nein")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberList(
+    members: List<TeamMember>,
+    canRemove: Boolean,
+    onMemberRemove: (TeamMember) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier
+            .padding(top = 8.dp)
+            .widthIn(max = 520.dp)
+            .fillMaxWidth()
+    ) {
+        items(members) { member ->
+            TeamMemberRow(
+                member = member,
+                canRemove = canRemove,
+                onRemoveClick = { onMemberRemove(member) }
+            )
         }
     }
 }

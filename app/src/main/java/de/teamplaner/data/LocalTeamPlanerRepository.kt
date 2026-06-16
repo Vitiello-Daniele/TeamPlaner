@@ -8,6 +8,9 @@ import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamEventType
 import de.teamplaner.model.TeamMember
+import de.teamplaner.model.TeamRequest
+import de.teamplaner.model.TeamRequestStatus
+import de.teamplaner.model.TeamRequestType
 import de.teamplaner.model.TeamRole
 import de.teamplaner.model.Teilnahme
 import de.teamplaner.model.TeilnahmeStatus
@@ -56,6 +59,7 @@ class LocalTeamPlanerRepository(
             .put("events", JSONArray(data.events.map(::encodeEvent)))
             .put("duties", JSONArray(data.duties.map(::encodeDuty)))
             .put("assignments", JSONArray(data.assignments.map(::encodeAssignment)))
+            .put("requests", JSONArray(data.requests.map(::encodeRequest)))
     }
 
     private fun decodeData(json: JSONObject): TeamPlanerData {
@@ -63,7 +67,8 @@ class LocalTeamPlanerRepository(
             teams = json.optJSONArray("teams").toList(::decodeTeam),
             events = json.optJSONArray("events").toList(::decodeEvent),
             duties = json.optJSONArray("duties").toList(::decodeDuty),
-            assignments = json.optJSONArray("assignments").toList(::decodeAssignment)
+            assignments = json.optJSONArray("assignments").toList(::decodeAssignment),
+            requests = json.optJSONArray("requests").toList(::decodeRequest)
         )
     }
 
@@ -174,6 +179,25 @@ class LocalTeamPlanerRepository(
             eventId = json.getString("eventId"),
             dutyId = json.getString("dutyId"),
             memberId = json.getString("memberId")
+        )
+    }
+
+    private fun encodeRequest(request: TeamRequest): JSONObject {
+        return JSONObject()
+            .put("id", request.id)
+            .put("teamId", request.teamId)
+            .put("userName", request.userName)
+            .put("type", request.type.name)
+            .put("status", request.status.name)
+    }
+
+    private fun decodeRequest(json: JSONObject): TeamRequest {
+        return TeamRequest(
+            id = json.getString("id"),
+            teamId = json.getString("teamId"),
+            userName = json.getString("userName"),
+            type = TeamRequestType.valueOf(json.getString("type")),
+            status = TeamRequestStatus.valueOf(json.getString("status"))
         )
     }
 
