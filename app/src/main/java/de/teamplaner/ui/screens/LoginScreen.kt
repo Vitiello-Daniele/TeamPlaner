@@ -14,11 +14,13 @@ import androidx.compose.ui.text.input.KeyboardType
 
 @Composable
 fun LoginScreen(
-    onLoginClick: (String) -> Unit,
+    onLoginClick: (String, String, (String) -> Unit) -> Unit,
+    onDebugLoginClick: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var errorText by remember { mutableStateOf("") }
 
     ScreenContent {
         Text(
@@ -41,23 +43,31 @@ fun LoginScreen(
         )
         Button(
             onClick = {
-                onLoginClick(email.substringBefore("@").ifBlank { "Daniele V." })
+                errorText = ""
+                onLoginClick(email.trim(), password) { errorText = it }
             },
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = "Einloggen")
         }
         OutlinedButton(
-            onClick = { onLoginClick("Daniele V.") },
+            onClick = { onDebugLoginClick("Daniele V.") },
             modifier = defaultActionModifier(topPadding = 12)
         ) {
             Text(text = "DEBUG: Trainerlogin")
         }
         OutlinedButton(
-            onClick = { onLoginClick("Leon M.") },
+            onClick = { onDebugLoginClick("Leon M.") },
             modifier = defaultActionModifier(topPadding = 12)
         ) {
             Text(text = "DEBUG: Spielerlogin")
+        }
+        if (errorText.isNotBlank()) {
+            Text(
+                text = errorText,
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
         OutlinedButton(
             onClick = onBackClick,

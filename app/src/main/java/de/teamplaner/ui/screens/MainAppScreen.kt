@@ -158,8 +158,10 @@ private fun GlobalEventScreen(
     modifier: Modifier = Modifier
 ) {
     var showUpcoming by remember { mutableStateOf(true) }
+    val visibleTeamIds = teams.map { it.id }.toSet()
     val filteredEvents = events.filter { event ->
-        if (showUpcoming) !event.date.startsWith("0") else event.date.startsWith("0")
+        event.teamId in visibleTeamIds &&
+            if (showUpcoming) !event.date.startsWith("0") else event.date.startsWith("0")
     }
 
     Column(

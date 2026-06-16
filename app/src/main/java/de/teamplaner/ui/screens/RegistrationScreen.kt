@@ -14,12 +14,13 @@ import androidx.compose.ui.text.input.KeyboardType
 
 @Composable
 fun RegistrationScreen(
-    onRegistrationClick: (String) -> Unit,
+    onRegistrationClick: (String, String, String, (String) -> Unit) -> Unit,
     onBackClick: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var errorText by remember { mutableStateOf("") }
 
     ScreenContent {
         Text(
@@ -47,10 +48,20 @@ fun RegistrationScreen(
             isPassword = true
         )
         Button(
-            onClick = { onRegistrationClick(name) },
+            onClick = {
+                errorText = ""
+                onRegistrationClick(name.trim(), email.trim(), password) { errorText = it }
+            },
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = "Registrieren")
+        }
+        if (errorText.isNotBlank()) {
+            Text(
+                text = errorText,
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
         OutlinedButton(
             onClick = onBackClick,
