@@ -8,3 +8,9 @@ local.properties
 *.hprof
 
 app/build/
+
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/prisma/*.db
+backend/prisma/*.db-journal
