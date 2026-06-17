@@ -259,9 +259,28 @@ fun MainAppScreen(
                         appState.removeDuty(duty)
                     }
                 },
-                onDutyAssign = appState::assignDuty,
-                onAssignmentRemove = appState::removeAssignment,
-                onFairPlanCreate = appState::createFairPlan,
+                onDutyAssign = { event, duty, member ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.assignDuty(token, event, duty, member) }
+                    } else {
+                        appState.assignDuty(event, duty, member)
+                    }
+                },
+                onAssignmentRemove = { assignment ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.removeAssignment(token, assignment.id) }
+                    } else {
+                        appState.removeAssignment(assignment)
+                    }
+                },
+                onFairPlanCreate = { replaceExisting ->
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.createFairPlan(token, teamId, replaceExisting) }
+                    } else {
+                        appState.createFairPlan(replaceExisting)
+                    }
+                },
                 modifier = Modifier.padding(innerPadding)
             )
             AppTab.Events -> GlobalEventScreen(

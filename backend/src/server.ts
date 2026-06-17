@@ -181,6 +181,20 @@ function mapEvent(event: {
   };
 }
 
+function mapAssignment(assignment: {
+  id: string;
+  eventId: string;
+  dutyId: string;
+  memberId: string;
+}) {
+  return {
+    id: assignment.id,
+    eventId: assignment.eventId,
+    dutyId: assignment.dutyId,
+    memberId: assignment.memberId
+  };
+}
+
 async function canManageTeam(teamId: string, userId: string): Promise<boolean> {
   const membership = await prisma.teamMember.findUnique({
     where: {
@@ -243,6 +257,74 @@ function eventInclude() {
     dutyLinks: true,
     participations: true
   };
+}
+
+function createFairAssignments(
+  events: Array<{
+    id: string;
+    dutyLinks: Array<{ dutyId: string }>;
+  }>,
+  members: Array<{
+    id: string;
+    user: {
+      name: string;
+    };
+  }>,
+  currentAssignments: Array<{
+    id: string;
+    eventId: string;
+    dutyId: string;
+    memberId: string;
+  }>,
+  replaceExisting: boolean
+) {
+  const result = replaceExisting ? [] : [...currentAssignments];
+  const assignmentCounts = new Map<string, number>();
+
+  result.forEach((assignment) => {
+    assignmentCounts.set(assignment.memberId, (assignmentCounts.get(assignment.memberId) ?? 0) + 1);
+  });
+
+  events.forEach((event) => {
+    event.dutyLinks.forEach((dutyLink) => {
+      const alreadyAssigned = result.some((assignment) =>
+        assignment.eventId === event.id && assignment.dutyId === dutyLink.dutyId
+      );
+
+      if (!alreadyAssigned) {
+        const usedForEvent = new Set(
+          result
+            .filter((assignment) => assignment.eventId === event.id)
+            .map((assignment) => assignment.memberId)
+        );
+        const preferredMembers = members.filter((member) => !usedForEvent.has(member.id));
+        const candidates = preferredMembers.length > 0 ? preferredMembers : members;
+        const nextMember = [...candidates]
+          .sort((left, right) => {
+            const countDiff = (assignmentCounts.get(left.id) ?? 0) - (assignmentCounts.get(right.id) ?? 0);
+
+            if (countDiff !== 0) {
+              return countDiff;
+            }
+
+            return left.user.name.localeCompare(right.user.name, "de");
+          })
+          [0];
+
+        if (nextMember) {
+          result.push({
+            id: "",
+            eventId: event.id,
+            dutyId: dutyLink.dutyId,
+            memberId: nextMember.id
+          });
+          assignmentCounts.set(nextMember.id, (assignmentCounts.get(nextMember.id) ?? 0) + 1);
+        }
+      }
+    });
+  });
+
+  return result;
 }
 
 app.get("/health", (_request, response) => {
@@ -459,11 +541,20 @@ app.get("/teams", requireAuth, async (request: AuthRequest, response: Response) 
       createdAt: "asc"
     }
   });
+  const eventIds = events.map((event) => event.id);
+  const assignments = await prisma.dutyAssignment.findMany({
+    where: {
+      eventId: {
+        in: eventIds
+      }
+    }
+  });
 
   response.json({
     teams: teams.map(mapTeam),
     events: events.map(mapEvent),
     duties: duties.map(mapDuty),
+    assignments: assignments.map(mapAssignment),
     requests: requests.map(mapRequest)
   });
 });
@@ -1076,6 +1167,191 @@ app.delete("/events/:eventId", requireAuth, async (request: AuthRequest, respons
   });
 
   response.status(204).send();
+});
+
+app.post("/assignments", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const eventId = String(request.body.eventId ?? "").trim();
+  const dutyId = String(request.body.dutyId ?? "").trim();
+  const memberId = String(request.body.memberId ?? "").trim();
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  if (!eventId || !dutyId || !memberId) {
+    response.status(400).json({ error: "Termin, Dienst und Mitglied sind erforderlich" });
+    return;
+  }
+
+  const event = await prisma.teamEvent.findUnique({
+    where: { id: eventId },
+    include: {
+      dutyLinks: true
+    }
+  });
+
+  if (!event) {
+    response.status(404).json({ error: "Termin wurde nicht gefunden" });
+    return;
+  }
+
+  if (!(await canManageTeam(event.teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  const hasDuty = event.dutyLinks.some((link) => link.dutyId === dutyId);
+  const member = await prisma.teamMember.findUnique({
+    where: { id: memberId }
+  });
+
+  if (!hasDuty || !member || member.teamId !== event.teamId) {
+    response.status(400).json({ error: "Dienst oder Mitglied passt nicht zu diesem Termin" });
+    return;
+  }
+
+  const assignment = await prisma.dutyAssignment.upsert({
+    where: {
+      eventId_dutyId: {
+        eventId,
+        dutyId
+      }
+    },
+    update: {
+      memberId
+    },
+    create: {
+      eventId,
+      dutyId,
+      memberId
+    }
+  });
+
+  response.status(201).json({ assignment: mapAssignment(assignment) });
+});
+
+app.delete("/assignments/:assignmentId", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const assignmentId = routeParam(request.params.assignmentId);
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  const assignment = await prisma.dutyAssignment.findUnique({
+    where: { id: assignmentId },
+    include: {
+      event: true
+    }
+  });
+
+  if (!assignment) {
+    response.status(404).json({ error: "Zuweisung wurde nicht gefunden" });
+    return;
+  }
+
+  if (!(await canManageTeam(assignment.event.teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  await prisma.dutyAssignment.delete({
+    where: { id: assignmentId }
+  });
+
+  response.status(204).send();
+});
+
+app.post("/teams/:teamId/assignments/fair", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const teamId = routeParam(request.params.teamId);
+  const replaceExisting = Boolean(request.body.replaceExisting);
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  if (!(await canManageTeam(teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  const members = await prisma.teamMember.findMany({
+    where: { teamId },
+    include: {
+      user: {
+        select: {
+          name: true
+        }
+      }
+    }
+  });
+  const events = await prisma.teamEvent.findMany({
+    where: { teamId },
+    include: {
+      dutyLinks: true
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
+  const eventIds = events.map((event) => event.id);
+  const currentAssignments = await prisma.dutyAssignment.findMany({
+    where: {
+      eventId: {
+        in: eventIds
+      }
+    }
+  });
+  const nextAssignments = createFairAssignments(
+    events,
+    members,
+    currentAssignments,
+    replaceExisting
+  );
+
+  if (replaceExisting) {
+    await prisma.dutyAssignment.deleteMany({
+      where: {
+        eventId: {
+          in: eventIds
+        }
+      }
+    });
+  }
+
+  for (const assignment of nextAssignments) {
+    await prisma.dutyAssignment.upsert({
+      where: {
+        eventId_dutyId: {
+          eventId: assignment.eventId,
+          dutyId: assignment.dutyId
+        }
+      },
+      update: {
+        memberId: assignment.memberId
+      },
+      create: {
+        eventId: assignment.eventId,
+        dutyId: assignment.dutyId,
+        memberId: assignment.memberId
+      }
+    });
+  }
+
+  const assignments = await prisma.dutyAssignment.findMany({
+    where: {
+      eventId: {
+        in: eventIds
+      }
+    }
+  });
+
+  response.json({ assignments: assignments.map(mapAssignment) });
 });
 
 app.listen(port, () => {

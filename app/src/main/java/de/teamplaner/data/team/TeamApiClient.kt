@@ -2,6 +2,7 @@ package de.teamplaner.data.team
 
 import de.teamplaner.data.TeamPlanerData
 import de.teamplaner.model.Duty
+import de.teamplaner.model.DutyAssignment
 import de.teamplaner.model.DutyType
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
@@ -31,7 +32,7 @@ class TeamApiClient(
                 teams = json.getJSONArray("teams").mapJsonObjects(::decodeTeam),
                 events = json.getJSONArray("events").mapJsonObjects(::decodeEvent),
                 duties = json.getJSONArray("duties").mapJsonObjects(::decodeDuty),
-                assignments = emptyList(),
+                assignments = json.getJSONArray("assignments").mapJsonObjects(::decodeAssignment),
                 requests = json.getJSONArray("requests").mapJsonObjects(::decodeRequest)
             )
         }
@@ -143,6 +144,44 @@ class TeamApiClient(
         ) {}
     }
 
+    suspend fun assignDuty(
+        token: String,
+        event: TeamEvent,
+        duty: Duty,
+        member: TeamMember
+    ): Result<Unit> {
+        return request(
+            token = token,
+            path = "/assignments",
+            method = "POST",
+            body = JSONObject()
+                .put("eventId", event.id)
+                .put("dutyId", duty.id)
+                .put("memberId", member.id)
+        ) {}
+    }
+
+    suspend fun removeAssignment(token: String, assignmentId: String): Result<Unit> {
+        return request(
+            token = token,
+            path = "/assignments/$assignmentId",
+            method = "DELETE"
+        ) {}
+    }
+
+    suspend fun createFairPlan(
+        token: String,
+        teamId: String,
+        replaceExisting: Boolean
+    ): Result<Unit> {
+        return request(
+            token = token,
+            path = "/teams/$teamId/assignments/fair",
+            method = "POST",
+            body = JSONObject().put("replaceExisting", replaceExisting)
+        ) {}
+    }
+
     private suspend fun <T> request(
         token: String,
         path: String,
@@ -248,6 +287,15 @@ class TeamApiClient(
                     status = TeilnahmeStatus.valueOf(teilnahme.getString("status"))
                 )
             }
+        )
+    }
+
+    private fun decodeAssignment(json: JSONObject): DutyAssignment {
+        return DutyAssignment(
+            id = json.getString("id"),
+            eventId = json.getString("eventId"),
+            dutyId = json.getString("dutyId"),
+            memberId = json.getString("memberId")
         )
     }
 
