@@ -222,11 +222,43 @@ fun MainAppScreen(
                         appState.deactivateInviteCode()
                     }
                 },
-                onEventCreate = appState::createEvent,
-                onEventUpdate = appState::updateEvent,
-                onEventRemove = appState::removeEvent,
-                onDutyCreate = appState::createDuty,
-                onDutyRemove = appState::removeDuty,
+                onEventCreate = { event ->
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.createEvent(token, teamId, event) }
+                    } else {
+                        appState.createEvent(event)
+                    }
+                },
+                onEventUpdate = { oldEvent, newEvent ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.updateEvent(token, newEvent.copy(id = oldEvent.id)) }
+                    } else {
+                        appState.updateEvent(oldEvent, newEvent)
+                    }
+                },
+                onEventRemove = { event ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.removeEvent(token, event.id) }
+                    } else {
+                        appState.removeEvent(event)
+                    }
+                },
+                onDutyCreate = { duty ->
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.createDuty(token, teamId, duty) }
+                    } else {
+                        appState.createDuty(duty)
+                    }
+                },
+                onDutyRemove = { duty ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.removeDuty(token, duty.id) }
+                    } else {
+                        appState.removeDuty(duty)
+                    }
+                },
                 onDutyAssign = appState::assignDuty,
                 onAssignmentRemove = appState::removeAssignment,
                 onFairPlanCreate = appState::createFairPlan,

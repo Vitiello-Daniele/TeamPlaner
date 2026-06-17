@@ -133,6 +133,54 @@ function mapRequest(request: {
   };
 }
 
+function mapDuty(duty: {
+  id: string;
+  teamId: string;
+  type: string;
+  title: string;
+  description: string;
+}) {
+  return {
+    id: duty.id,
+    teamId: duty.teamId,
+    type: duty.type,
+    title: duty.title,
+    description: duty.description
+  };
+}
+
+function mapEvent(event: {
+  id: string;
+  teamId: string;
+  type: string;
+  title: string;
+  date: string;
+  time: string;
+  location: string;
+  dutyLinks: Array<{
+    dutyId: string;
+  }>;
+  participations: Array<{
+    memberId: string;
+    status: string;
+  }>;
+}) {
+  return {
+    id: event.id,
+    teamId: event.teamId,
+    type: event.type,
+    title: event.title,
+    date: event.date,
+    time: event.time,
+    location: event.location,
+    dutyIds: event.dutyLinks.map((link) => link.dutyId),
+    teilnahmen: event.participations.map((participation) => ({
+      memberId: participation.memberId,
+      status: participation.status
+    }))
+  };
+}
+
 async function canManageTeam(teamId: string, userId: string): Promise<boolean> {
   const membership = await prisma.teamMember.findUnique({
     where: {
@@ -144,6 +192,30 @@ async function canManageTeam(teamId: string, userId: string): Promise<boolean> {
   });
 
   return membership?.role === "Trainer";
+}
+
+async function isTeamMember(teamId: string, userId: string): Promise<boolean> {
+  const membership = await prisma.teamMember.findUnique({
+    where: {
+      teamId_userId: {
+        teamId,
+        userId
+      }
+    }
+  });
+
+  return membership != null;
+}
+
+async function currentMembership(teamId: string, userId: string) {
+  return prisma.teamMember.findUnique({
+    where: {
+      teamId_userId: {
+        teamId,
+        userId
+      }
+    }
+  });
 }
 
 async function teamWithMembers(teamId: string) {
@@ -164,6 +236,13 @@ async function teamWithMembers(teamId: string) {
       }
     }
   });
+}
+
+function eventInclude() {
+  return {
+    dutyLinks: true,
+    participations: true
+  };
 }
 
 app.get("/health", (_request, response) => {
@@ -331,6 +410,7 @@ app.get("/teams", requireAuth, async (request: AuthRequest, response: Response) 
     }
   });
   const teams = memberships.map((membership) => membership.team);
+  const teamIds = teams.map((team) => team.id);
   const trainerTeamIds = memberships
     .filter((membership) => membership.role === "Trainer")
     .map((membership) => membership.teamId);
@@ -358,9 +438,32 @@ app.get("/teams", requireAuth, async (request: AuthRequest, response: Response) 
       createdAt: "asc"
     }
   });
+  const duties = await prisma.duty.findMany({
+    where: {
+      teamId: {
+        in: teamIds
+      }
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
+  const events = await prisma.teamEvent.findMany({
+    where: {
+      teamId: {
+        in: teamIds
+      }
+    },
+    include: eventInclude(),
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
 
   response.json({
     teams: teams.map(mapTeam),
+    events: events.map(mapEvent),
+    duties: duties.map(mapDuty),
     requests: requests.map(mapRequest)
   });
 });
@@ -725,6 +828,254 @@ app.patch("/teams/:teamId/invite-code", requireAuth, async (request: AuthRequest
   });
 
   response.json({ team: mapTeam(updatedTeam) });
+});
+
+app.post("/teams/:teamId/duties", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const teamId = routeParam(request.params.teamId);
+  const type = String(request.body.type ?? "").trim();
+  const title = String(request.body.title ?? "").trim();
+  const description = String(request.body.description ?? "").trim();
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  if (!(await canManageTeam(teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  if (!type || !title) {
+    response.status(400).json({ error: "Diensttyp und Titel sind erforderlich" });
+    return;
+  }
+
+  const duty = await prisma.duty.create({
+    data: {
+      teamId,
+      type,
+      title,
+      description
+    }
+  });
+
+  response.status(201).json({ duty: mapDuty(duty) });
+});
+
+app.delete("/duties/:dutyId", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const dutyId = routeParam(request.params.dutyId);
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  const duty = await prisma.duty.findUnique({
+    where: { id: dutyId }
+  });
+
+  if (!duty) {
+    response.status(404).json({ error: "Dienst wurde nicht gefunden" });
+    return;
+  }
+
+  if (!(await canManageTeam(duty.teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  await prisma.duty.delete({
+    where: { id: dutyId }
+  });
+
+  response.status(204).send();
+});
+
+app.post("/teams/:teamId/events", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const teamId = routeParam(request.params.teamId);
+  const type = String(request.body.type ?? "").trim();
+  const title = String(request.body.title ?? "").trim();
+  const date = String(request.body.date ?? "").trim();
+  const time = String(request.body.time ?? "").trim();
+  const location = String(request.body.location ?? "").trim();
+  const dutyIds: string[] = Array.isArray(request.body.dutyIds) ? request.body.dutyIds.map(String) : [];
+  const participantIds: string[] = Array.isArray(request.body.participantIds) ? request.body.participantIds.map(String) : [];
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  if (!(await canManageTeam(teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  if (!type || !title || !date || !time || participantIds.length === 0) {
+    response.status(400).json({ error: "Terminart, Titel, Datum, Uhrzeit und Teilnehmer sind erforderlich" });
+    return;
+  }
+
+  const event = await prisma.teamEvent.create({
+    data: {
+      teamId,
+      type,
+      title,
+      date,
+      time,
+      location,
+      dutyLinks: {
+        create: dutyIds.map((dutyId) => ({
+          dutyId
+        }))
+      },
+      participations: {
+        create: participantIds.map((memberId) => ({
+          memberId,
+          status: "Offen"
+        }))
+      }
+    },
+    include: eventInclude()
+  });
+
+  response.status(201).json({ event: mapEvent(event) });
+});
+
+app.patch("/events/:eventId", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const eventId = routeParam(request.params.eventId);
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  const existingEvent = await prisma.teamEvent.findUnique({
+    where: { id: eventId },
+    include: eventInclude()
+  });
+
+  if (!existingEvent) {
+    response.status(404).json({ error: "Termin wurde nicht gefunden" });
+    return;
+  }
+
+  const membership = await currentMembership(existingEvent.teamId, userId);
+
+  if (!membership) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  if (membership.role !== "Trainer") {
+    const ownStatus = Array.isArray(request.body.teilnahmen)
+      ? request.body.teilnahmen.find((item: { memberId?: unknown }) => String(item.memberId ?? "") === membership.id)
+      : null;
+
+    if (!ownStatus) {
+      response.status(403).json({ error: "Nur der eigene Teilnahmestatus darf geändert werden" });
+      return;
+    }
+
+    await prisma.eventParticipation.update({
+      where: {
+        eventId_memberId: {
+          eventId,
+          memberId: membership.id
+        }
+      },
+      data: {
+        status: String(ownStatus.status ?? "Offen")
+      }
+    });
+  } else {
+    const type = String(request.body.type ?? "").trim();
+    const title = String(request.body.title ?? "").trim();
+    const date = String(request.body.date ?? "").trim();
+    const time = String(request.body.time ?? "").trim();
+    const location = String(request.body.location ?? "").trim();
+    const dutyIds: string[] = Array.isArray(request.body.dutyIds) ? request.body.dutyIds.map(String) : [];
+    const teilnahmen: Array<{ memberId?: unknown; status?: unknown }> = Array.isArray(request.body.teilnahmen)
+      ? request.body.teilnahmen
+      : [];
+
+    if (!type || !title || !date || !time || teilnahmen.length === 0) {
+      response.status(400).json({ error: "Terminart, Titel, Datum, Uhrzeit und Teilnehmer sind erforderlich" });
+      return;
+    }
+
+    await prisma.teamEvent.update({
+      where: { id: eventId },
+      data: {
+        type,
+        title,
+        date,
+        time,
+        location
+      }
+    });
+    await prisma.eventDuty.deleteMany({
+      where: { eventId }
+    });
+    await prisma.eventDuty.createMany({
+      data: dutyIds.map((dutyId) => ({
+        eventId,
+        dutyId
+      }))
+    });
+    await prisma.eventParticipation.deleteMany({
+      where: { eventId }
+    });
+    await prisma.eventParticipation.createMany({
+      data: teilnahmen.map((teilnahme) => ({
+        eventId,
+        memberId: String(teilnahme.memberId ?? ""),
+        status: String(teilnahme.status ?? "Offen")
+      }))
+    });
+  }
+
+  const updatedEvent = await prisma.teamEvent.findUnique({
+    where: { id: eventId },
+    include: eventInclude()
+  });
+
+  response.json({ event: updatedEvent ? mapEvent(updatedEvent) : null });
+});
+
+app.delete("/events/:eventId", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const eventId = routeParam(request.params.eventId);
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  const event = await prisma.teamEvent.findUnique({
+    where: { id: eventId }
+  });
+
+  if (!event) {
+    response.status(404).json({ error: "Termin wurde nicht gefunden" });
+    return;
+  }
+
+  if (!(await canManageTeam(event.teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  await prisma.teamEvent.delete({
+    where: { id: eventId }
+  });
+
+  response.status(204).send();
 });
 
 app.listen(port, () => {
