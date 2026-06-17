@@ -620,10 +620,9 @@ private fun AssignmentFormScreen(
         }
 
         if (errorText.isNotBlank()) {
-            Text(
+            ErrorMessage(
                 text = errorText,
-                modifier = Modifier.fieldTopPadding(8),
-                style = MaterialTheme.typography.bodyMedium
+                modifier = Modifier.fieldTopPadding(8)
             )
         }
     }

@@ -12,10 +12,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,12 +38,20 @@ import de.teamplaner.model.TeamEventType
 import de.teamplaner.model.TeamMember
 import de.teamplaner.model.Teilnahme
 import de.teamplaner.model.TeilnahmeStatus
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.format.ResolverStyle
 
 private sealed interface EventView {
     data object List : EventView
     data class Form(val event: TeamEvent?) : EventView
     data class Detail(val event: TeamEvent) : EventView
 }
+
+private val eventDateFormatter = DateTimeFormatter.ofPattern("dd.MM.uuuu")
+    .withResolverStyle(ResolverStyle.STRICT)
 
 @Composable
 fun EventScreen(
@@ -203,6 +218,7 @@ private fun EventFormScreen(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun EventForm(
     team: Team,
     duties: List<Duty>,
@@ -231,6 +247,8 @@ private fun EventForm(
     }
     var shouldAutoAssign by remember(editedEvent) { mutableStateOf(editedEvent == null) }
     var errorText by remember(editedEvent) { mutableStateOf("") }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
     AuthTextField(
         value = title,
@@ -238,18 +256,18 @@ private fun EventForm(
         label = "Titel",
         modifier = Modifier.fieldTopPadding(24)
     )
-    AuthTextField(
-        value = date,
-        onValueChange = { date = it },
-        label = "Datum",
-        modifier = Modifier.fieldTopPadding(12)
-    )
-    AuthTextField(
-        value = time,
-        onValueChange = { time = it },
-        label = "Uhrzeit",
-        modifier = Modifier.fieldTopPadding(12)
-    )
+    OutlinedButton(
+        onClick = { showDatePicker = true },
+        modifier = defaultActionModifier(topPadding = 12)
+    ) {
+        Text(text = if (date.isBlank()) "Datum auswählen" else "Datum: $date")
+    }
+    OutlinedButton(
+        onClick = { showTimePicker = true },
+        modifier = defaultActionModifier(topPadding = 12)
+    ) {
+        Text(text = if (time.isBlank()) "Uhrzeit auswählen" else "Uhrzeit: $time")
+    }
     AuthTextField(
         value = location,
         onValueChange = { location = it },
@@ -327,6 +345,8 @@ private fun EventForm(
                 trimmedTitle.isBlank() -> errorText = "Bitte einen Titel eingeben"
                 trimmedDate.isBlank() -> errorText = "Bitte ein Datum eingeben"
                 trimmedTime.isBlank() -> errorText = "Bitte eine Uhrzeit eingeben"
+                !isValidEventDate(trimmedDate) -> errorText = "Bitte ein gültiges Datum auswählen"
+                !isValidEventTime(trimmedTime) -> errorText = "Bitte eine gültige Uhrzeit auswählen"
                 selectedMembers.isEmpty() -> errorText = "Bitte mindestens einen Teilnehmer auswählen"
                 selectedDutyIds.isEmpty() -> errorText = "Bitte mindestens einen Dienst auswählen"
                 else -> {
@@ -359,12 +379,107 @@ private fun EventForm(
     }
 
     if (errorText.isNotBlank()) {
-        Text(
+        ErrorMessage(
             text = errorText,
-            modifier = Modifier.fieldTopPadding(8),
-            style = MaterialTheme.typography.bodyMedium
+            modifier = Modifier.fieldTopPadding(8)
         )
     }
+
+    if (showDatePicker) {
+        EventDatePickerDialog(
+            currentDate = date,
+            onDismiss = { showDatePicker = false },
+            onDateSelected = {
+                date = it
+                showDatePicker = false
+            }
+        )
+    }
+
+    if (showTimePicker) {
+        EventTimePickerDialog(
+            currentTime = time,
+            onDismiss = { showTimePicker = false },
+            onTimeSelected = {
+                time = it
+                showTimePicker = false
+            }
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun EventDatePickerDialog(
+    currentDate: String,
+    onDismiss: () -> Unit,
+    onDateSelected: (String) -> Unit
+) {
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = parseDateMillis(currentDate)
+    )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val selectedMillis = datePickerState.selectedDateMillis
+
+                    if (selectedMillis != null) {
+                        onDateSelected(formatDateMillis(selectedMillis))
+                    } else {
+                        onDismiss()
+                    }
+                }
+            ) {
+                Text(text = "Übernehmen")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Abbrechen")
+            }
+        }
+    ) {
+        DatePicker(state = datePickerState)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun EventTimePickerDialog(
+    currentTime: String,
+    onDismiss: () -> Unit,
+    onTimeSelected: (String) -> Unit
+) {
+    val initialTime = parseTime(currentTime)
+    val timePickerState = rememberTimePickerState(
+        initialHour = initialTime.first,
+        initialMinute = initialTime.second,
+        is24Hour = true
+    )
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onTimeSelected(formatTime(timePickerState.hour, timePickerState.minute))
+                }
+            ) {
+                Text(text = "Übernehmen")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Abbrechen")
+            }
+        },
+        text = {
+            TimePicker(state = timePickerState)
+        }
+    )
 }
 
 @Composable
@@ -641,4 +756,59 @@ private fun TeilnahmeRow(
             }
         }
     }
+}
+
+private fun parseDateMillis(date: String): Long? {
+    return runCatching {
+        LocalDate.parse(date, eventDateFormatter)
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+    }.getOrNull()
+}
+
+private fun formatDateMillis(millis: Long): String {
+    return Instant.ofEpochMilli(millis)
+        .atZone(ZoneOffset.UTC)
+        .toLocalDate()
+        .format(eventDateFormatter)
+}
+
+private fun isValidEventDate(date: String): Boolean {
+    return parseDateMillis(date) != null
+}
+
+private fun parseTime(time: String): Pair<Int, Int> {
+    val parts = time.split(":")
+    val hour = parts.getOrNull(0)?.toIntOrNull()
+    val minute = parts.getOrNull(1)?.toIntOrNull()
+
+    return if (
+        parts.size == 2 &&
+        hour != null &&
+        minute != null &&
+        hour in 0..23 &&
+        minute in 0..59
+    ) {
+        hour to minute
+    } else {
+        18 to 0
+    }
+}
+
+private fun formatTime(hour: Int, minute: Int): String {
+    return "%02d:%02d".format(hour, minute)
+}
+
+private fun isValidEventTime(time: String): Boolean {
+    val parts = time.split(":")
+    val hour = parts.getOrNull(0)?.toIntOrNull()
+    val minute = parts.getOrNull(1)?.toIntOrNull()
+
+    return parts.size == 2 &&
+        hour != null &&
+        minute != null &&
+        hour in 0..23 &&
+        minute in 0..59 &&
+        Regex("^\\d{2}:\\d{2}$").matches(time)
 }

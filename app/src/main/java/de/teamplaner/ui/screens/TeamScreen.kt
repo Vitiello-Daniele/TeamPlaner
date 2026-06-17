@@ -750,7 +750,7 @@ private fun CreateTeamContent(
             Text(text = "Speichern")
         }
         if (errorText.isNotBlank()) {
-            Text(text = errorText, modifier = Modifier.fieldTopPadding(8), style = MaterialTheme.typography.bodyMedium)
+            ErrorMessage(text = errorText, modifier = Modifier.fieldTopPadding(8))
         }
         OutlinedButton(onClick = onBackClick, modifier = defaultActionModifier(topPadding = 12)) {
             Text(text = "Zurück")
@@ -790,7 +790,7 @@ private fun JoinTeamContent(
             Text(text = "Beitreten")
         }
         if (errorText.isNotBlank()) {
-            Text(text = errorText, modifier = Modifier.fieldTopPadding(8), style = MaterialTheme.typography.bodyMedium)
+            ErrorMessage(text = errorText, modifier = Modifier.fieldTopPadding(8))
         }
         OutlinedButton(onClick = onBackClick, modifier = defaultActionModifier(topPadding = 12)) {
             Text(text = "Zurück")

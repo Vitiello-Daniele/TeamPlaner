@@ -63,10 +63,9 @@ fun LoginScreen(
             Text(text = "DEBUG: Spielerlogin")
         }
         if (errorText.isNotBlank()) {
-            Text(
+            ErrorMessage(
                 text = errorText,
-                modifier = Modifier.fieldTopPadding(8),
-                style = MaterialTheme.typography.bodyMedium
+                modifier = Modifier.fieldTopPadding(8)
             )
         }
         OutlinedButton(

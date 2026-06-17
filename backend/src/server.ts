@@ -63,6 +63,36 @@ function routeParam(value: string | string[] | undefined): string {
   return value ?? "";
 }
 
+function isValidEventDate(date: string): boolean {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+
+  if (!match) {
+    return false;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const parsedDate = new Date(Date.UTC(year, month - 1, day));
+
+  return parsedDate.getUTCFullYear() === year &&
+    parsedDate.getUTCMonth() === month - 1 &&
+    parsedDate.getUTCDate() === day;
+}
+
+function isValidEventTime(time: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+
+  if (!match) {
+    return false;
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
 function createInviteCode(teamName: string): string {
   const base = teamName
     .toUpperCase()
@@ -1011,6 +1041,11 @@ app.post("/teams/:teamId/events", requireAuth, async (request: AuthRequest, resp
     return;
   }
 
+  if (!isValidEventDate(date) || !isValidEventTime(time)) {
+    response.status(400).json({ error: "Datum oder Uhrzeit ist ungültig" });
+    return;
+  }
+
   const event = await prisma.teamEvent.create({
     data: {
       teamId,
@@ -1097,6 +1132,11 @@ app.patch("/events/:eventId", requireAuth, async (request: AuthRequest, response
 
     if (!type || !title || !date || !time || teilnahmen.length === 0) {
       response.status(400).json({ error: "Terminart, Titel, Datum, Uhrzeit und Teilnehmer sind erforderlich" });
+      return;
+    }
+
+    if (!isValidEventDate(date) || !isValidEventTime(time)) {
+      response.status(400).json({ error: "Datum oder Uhrzeit ist ungültig" });
       return;
     }
 
