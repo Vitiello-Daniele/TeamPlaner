@@ -13,4 +13,39 @@ model User {
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
+  memberships  TeamMember[]
+  requests     TeamRequest[]
+}
+
+model Team {
+  id               String        @id @default(cuid())
+  name             String
+  inviteCode       String        @unique
+  inviteCodeActive Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  members          TeamMember[]
+  requests         TeamRequest[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      String
+  createdAt DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model TeamRequest {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  type      String
+  status    String
+  createdAt DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

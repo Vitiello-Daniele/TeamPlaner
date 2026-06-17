@@ -20,12 +20,11 @@ import de.teamplaner.model.TeamRole
 class MainAppState(
     private val displayName: String,
     private val repository: TeamPlanerRepository = FakeTeamPlanerRepository(),
+    initialData: TeamPlanerData = repository.loadData(displayName),
     private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator(),
     private val idGenerator: IdGenerator = IdGenerator(),
     private val dutyAssignmentService: DutyAssignmentService = DutyAssignmentService()
 ) {
-    private val initialData = repository.loadData(displayName)
-
     private var allTeams by mutableStateOf(initialData.teams)
 
     val teams: List<Team>

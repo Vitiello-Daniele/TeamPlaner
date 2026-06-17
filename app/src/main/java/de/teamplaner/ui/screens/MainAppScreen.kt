@@ -21,9 +21,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,12 +35,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import de.teamplaner.R
 import de.teamplaner.data.LocalTeamPlanerRepository
+import de.teamplaner.data.TeamPlanerData
+import de.teamplaner.data.team.TeamApiClient
 import de.teamplaner.model.DutyAssignment
 import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
-import de.teamplaner.model.TeilnahmeStatus
+import de.teamplaner.model.TeamRequestStatus
 import de.teamplaner.ui.state.MainAppState
+import kotlinx.coroutines.launch
 
 private enum class AppTab(val title: String) {
     Teams("Teams"),
@@ -51,16 +56,63 @@ private enum class AppTab(val title: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 fun MainAppScreen(
     name: String,
+    token: String,
     onLogoutClick: () -> Unit
 ) {
     val displayName = name.ifBlank { "Kein Name angegeben" }
     val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val teamApiClient = remember { TeamApiClient() }
     var selectedTab by remember { mutableStateOf(AppTab.Teams) }
-    val appState = remember(displayName, context) {
+    var reloadTeams by remember { mutableStateOf(0) }
+    var remoteData by remember(token) { mutableStateOf<TeamPlanerData?>(null) }
+    var remoteError by remember { mutableStateOf("") }
+    val usesBackend = token.isNotBlank()
+
+    fun reloadRemoteTeams() {
+        reloadTeams += 1
+    }
+
+    LaunchedEffect(token, reloadTeams) {
+        if (usesBackend) {
+            teamApiClient.loadData(token)
+                .onSuccess {
+                    remoteData = it
+                    remoteError = ""
+                }
+                .onFailure {
+                    remoteError = it.message ?: "Teams konnten nicht geladen werden"
+                }
+        }
+    }
+
+    val localRepository = remember(context, displayName) {
+        LocalTeamPlanerRepository(context, displayName)
+    }
+    val appState = remember(displayName, context, remoteData, usesBackend) {
         MainAppState(
             displayName = displayName,
-            repository = LocalTeamPlanerRepository(context, displayName)
+            repository = localRepository,
+            initialData = remoteData ?: if (usesBackend) {
+                TeamPlanerData(
+                    teams = emptyList(),
+                    events = emptyList(),
+                    duties = emptyList(),
+                    assignments = emptyList(),
+                    requests = emptyList()
+                )
+            } else {
+                localRepository.loadData(displayName)
+            }
         )
+    }
+
+    fun runTeamAction(action: suspend () -> Result<Unit>) {
+        scope.launch {
+            action()
+                .onSuccess { reloadRemoteTeams() }
+                .onFailure { remoteError = it.message ?: "Aktion fehlgeschlagen" }
+        }
     }
 
     Scaffold(
@@ -110,14 +162,66 @@ fun MainAppScreen(
                 selectedTeamInvites = appState.selectedTeam?.let { appState.openInvites(it.id) }.orEmpty(),
                 teamName = appState::teamName,
                 onTeamSelect = appState::selectTeam,
-                onTeamCreate = appState::createTeam,
-                onTeamJoin = appState::joinTeam,
-                onMemberInvite = appState::inviteMember,
-                onMemberRemove = appState::removeMember,
-                onRequestAccept = appState::acceptRequest,
-                onRequestReject = appState::rejectRequest,
-                onInviteCodeRefresh = appState::refreshInviteCode,
-                onInviteCodeDeactivate = appState::deactivateInviteCode,
+                onTeamCreate = { teamName ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.createTeam(token, teamName) }
+                    } else {
+                        appState.createTeam(teamName)
+                    }
+                },
+                onTeamJoin = { inviteCode ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.joinTeam(token, inviteCode) }
+                    } else {
+                        appState.joinTeam(inviteCode)
+                    }
+                },
+                onMemberInvite = { user ->
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.inviteMember(token, teamId, user) }
+                    } else {
+                        appState.inviteMember(user)
+                    }
+                },
+                onMemberRemove = { member ->
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.removeMember(token, teamId, member.id) }
+                    } else {
+                        appState.removeMember(member)
+                    }
+                },
+                onRequestAccept = { request ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.updateRequest(token, request.id, TeamRequestStatus.Accepted) }
+                    } else {
+                        appState.acceptRequest(request)
+                    }
+                },
+                onRequestReject = { request ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.updateRequest(token, request.id, TeamRequestStatus.Rejected) }
+                    } else {
+                        appState.rejectRequest(request)
+                    }
+                },
+                onInviteCodeRefresh = {
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.refreshInviteCode(token, teamId) }
+                    } else {
+                        appState.refreshInviteCode()
+                    }
+                },
+                onInviteCodeDeactivate = {
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.deactivateInviteCode(token, teamId) }
+                    } else {
+                        appState.deactivateInviteCode()
+                    }
+                },
                 onEventCreate = appState::createEvent,
                 onEventUpdate = appState::updateEvent,
                 onEventRemove = appState::removeEvent,

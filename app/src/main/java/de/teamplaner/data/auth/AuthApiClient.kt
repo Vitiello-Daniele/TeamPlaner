@@ -12,14 +12,16 @@ class AuthApiClient(
     private val baseUrl: String = "http://10.0.2.2:3000"
 ) {
     suspend fun register(
-        name: String,
+        firstName: String,
+        lastName: String,
         email: String,
         password: String
     ): Result<AuthSession> {
         return postAuth(
             path = "/auth/register",
             body = JSONObject()
-                .put("name", name)
+                .put("firstName", firstName)
+                .put("lastName", lastName)
                 .put("email", email)
                 .put("password", password)
         )

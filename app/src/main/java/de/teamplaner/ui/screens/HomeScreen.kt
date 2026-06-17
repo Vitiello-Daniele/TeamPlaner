@@ -38,10 +38,12 @@ fun HomeScreen() {
     val authApiClient = remember { AuthApiClient() }
     var currentView by remember { mutableStateOf(HomeView.Loading) }
     var profileName by remember { mutableStateOf("") }
+    var sessionToken by remember { mutableStateOf("") }
 
     fun openApp(session: AuthSession) {
         sessionStore.save(session)
         profileName = session.user.name
+        sessionToken = session.token
         currentView = HomeView.App
     }
 
@@ -53,6 +55,7 @@ fun HomeScreen() {
             authApiClient.me(savedSession.token)
                 .onSuccess { user ->
                     profileName = user.name
+                    sessionToken = savedSession.token
                     currentView = HomeView.App
                 }
                 .onFailure {
@@ -84,14 +87,15 @@ fun HomeScreen() {
                 },
                 onDebugLoginClick = { name ->
                     profileName = name
+                    sessionToken = ""
                     currentView = HomeView.App
                 },
                 onBackClick = { currentView = HomeView.Start }
             )
             HomeView.Registration -> RegistrationScreen(
-                onRegistrationClick = { name, email, password, onError ->
+                onRegistrationClick = { firstName, lastName, email, password, onError ->
                     scope.launch {
-                        authApiClient.register(name, email, password)
+                        authApiClient.register(firstName, lastName, email, password)
                             .onSuccess(::openApp)
                             .onFailure { onError(it.message ?: "Registrierung fehlgeschlagen") }
                     }
@@ -100,9 +104,11 @@ fun HomeScreen() {
             )
             HomeView.App -> MainAppScreen(
                 name = profileName,
+                token = sessionToken,
                 onLogoutClick = {
                     sessionStore.clear()
                     profileName = ""
+                    sessionToken = ""
                     currentView = HomeView.Start
                 }
             )

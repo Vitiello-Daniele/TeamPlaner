@@ -14,10 +14,11 @@ import androidx.compose.ui.text.input.KeyboardType
 
 @Composable
 fun RegistrationScreen(
-    onRegistrationClick: (String, String, String, (String) -> Unit) -> Unit,
+    onRegistrationClick: (String, String, String, String, (String) -> Unit) -> Unit,
     onBackClick: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
+    var firstName by remember { mutableStateOf("") }
+    var lastName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorText by remember { mutableStateOf("") }
@@ -28,10 +29,16 @@ fun RegistrationScreen(
             style = MaterialTheme.typography.headlineMedium
         )
         AuthTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = "Name",
+            value = firstName,
+            onValueChange = { firstName = it },
+            label = "Vorname",
             modifier = Modifier.fieldTopPadding(32)
+        )
+        AuthTextField(
+            value = lastName,
+            onValueChange = { lastName = it },
+            label = "Nachname",
+            modifier = Modifier.fieldTopPadding(12)
         )
         AuthTextField(
             value = email,
@@ -50,7 +57,28 @@ fun RegistrationScreen(
         Button(
             onClick = {
                 errorText = ""
-                onRegistrationClick(name.trim(), email.trim(), password) { errorText = it }
+                val trimmedFirstName = firstName.trim()
+                val trimmedLastName = lastName.trim()
+                val trimmedEmail = email.trim()
+                val namePattern = Regex("^[A-Za-zÄÖÜäöüß'-]+$")
+                val emailPattern = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+
+                when {
+                    trimmedFirstName.isBlank() -> errorText = "Bitte einen Vornamen eingeben"
+                    trimmedLastName.isBlank() -> errorText = "Bitte einen Nachnamen eingeben"
+                    trimmedEmail.isBlank() -> errorText = "Bitte eine E-Mail eingeben"
+                    password.isBlank() -> errorText = "Bitte ein Passwort eingeben"
+                    !namePattern.matches(trimmedFirstName) -> errorText = "Vorname enthält ungültige Zeichen"
+                    !namePattern.matches(trimmedLastName) -> errorText = "Nachname enthält ungültige Zeichen"
+                    !emailPattern.matches(trimmedEmail) -> errorText = "Bitte eine gültige E-Mail eingeben"
+                    password.length < 6 -> errorText = "Das Passwort braucht mindestens 6 Zeichen"
+                    else -> onRegistrationClick(
+                        trimmedFirstName,
+                        trimmedLastName,
+                        trimmedEmail,
+                        password
+                    ) { errorText = it }
+                }
             },
             modifier = defaultActionModifier(topPadding = 24)
         ) {
