@@ -1,5 +1,6 @@
 package de.teamplaner.data.auth
 
+import de.teamplaner.data.ApiConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -9,7 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class AuthApiClient(
-    private val baseUrl: String = "http://10.0.2.2:3000"
+    private val baseUrl: String = ApiConfig.BASE_URL
 ) {
     suspend fun register(
         firstName: String,

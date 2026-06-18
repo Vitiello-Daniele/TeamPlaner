@@ -1,6 +1,7 @@
 package de.teamplaner.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,11 +14,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
 import de.teamplaner.model.TeamRequestStatus
 import de.teamplaner.ui.state.MainAppState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class AppTab(val title: String) {
@@ -67,6 +71,7 @@ fun MainAppScreen(
     var reloadTeams by remember { mutableStateOf(0) }
     var remoteData by remember(token) { mutableStateOf<TeamPlanerData?>(null) }
     var remoteError by remember { mutableStateOf("") }
+    var isLoadingRemoteData by remember { mutableStateOf(false) }
     val usesBackend = token.isNotBlank()
 
     fun reloadRemoteTeams() {
@@ -75,6 +80,7 @@ fun MainAppScreen(
 
     LaunchedEffect(token, reloadTeams) {
         if (usesBackend) {
+            isLoadingRemoteData = true
             teamApiClient.loadData(token)
                 .onSuccess {
                     remoteData = it
@@ -83,6 +89,14 @@ fun MainAppScreen(
                 .onFailure {
                     remoteError = it.message ?: "Teams konnten nicht geladen werden"
                 }
+            isLoadingRemoteData = false
+        }
+    }
+
+    LaunchedEffect(token, usesBackend) {
+        while (usesBackend) {
+            delay(15000)
+            reloadRemoteTeams()
         }
     }
 
@@ -109,9 +123,11 @@ fun MainAppScreen(
 
     fun runTeamAction(action: suspend () -> Result<Unit>) {
         scope.launch {
+            isLoadingRemoteData = true
             action()
                 .onSuccess { reloadRemoteTeams() }
                 .onFailure { remoteError = it.message ?: "Aktion fehlgeschlagen" }
+            isLoadingRemoteData = false
         }
     }
 
@@ -147,8 +163,20 @@ fun MainAppScreen(
             }
         }
     ) { innerPadding ->
-        when (selectedTab) {
-            AppTab.Teams -> TeamScreen(
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+        ) {
+            BackendStatusBar(
+                usesBackend = usesBackend,
+                isLoading = isLoadingRemoteData,
+                errorText = remoteError,
+                onRefreshClick = { reloadRemoteTeams() }
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                when (selectedTab) {
+                    AppTab.Teams -> TeamScreen(
                 teams = appState.teams,
                 selectedTeam = appState.selectedTeam,
                 currentMember = appState.currentMember,
@@ -281,27 +309,67 @@ fun MainAppScreen(
                         appState.createFairPlan(replaceExisting)
                     }
                 },
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier
             )
-            AppTab.Events -> GlobalEventScreen(
+                    AppTab.Events -> GlobalEventScreen(
                 teams = appState.teams,
                 events = appState.events,
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier
             )
-            AppTab.Plan -> GlobalPlanScreen(
+                    AppTab.Plan -> GlobalPlanScreen(
                 teams = appState.teams,
                 events = appState.events,
                 duties = appState.duties,
                 currentName = displayName,
                 assignments = appState.assignments,
                 canManageTeam = appState::canManageTeam,
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier
             )
-            AppTab.Profile -> ProfileScreen(
+                    AppTab.Profile -> ProfileScreen(
                 name = displayName,
                 teams = appState.teams,
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier
             )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackendStatusBar(
+    usesBackend: Boolean,
+    isLoading: Boolean,
+    errorText: String,
+    onRefreshClick: () -> Unit
+) {
+    if (!usesBackend || (!isLoading && errorText.isBlank())) {
+        return
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (isLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth()
+            )
+        }
+        if (errorText.isNotBlank()) {
+            ErrorMessage(
+                text = errorText,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .widthIn(max = 520.dp)
+            )
+            TextButton(onClick = onRefreshClick) {
+                Text(text = "Erneut versuchen")
+            }
         }
     }
 }

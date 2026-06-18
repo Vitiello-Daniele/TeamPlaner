@@ -1,5 +1,6 @@
 package de.teamplaner.data.team
 
+import de.teamplaner.data.ApiConfig
 import de.teamplaner.data.TeamPlanerData
 import de.teamplaner.model.Duty
 import de.teamplaner.model.DutyAssignment
@@ -24,7 +25,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class TeamApiClient(
-    private val baseUrl: String = "http://10.0.2.2:3000"
+    private val baseUrl: String = ApiConfig.BASE_URL
 ) {
     suspend fun loadData(token: String): Result<TeamPlanerData> {
         return request(token = token, path = "/teams", method = "GET") { json ->
