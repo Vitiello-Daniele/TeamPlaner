@@ -15,6 +15,7 @@ import de.teamplaner.model.TeamRequestType
 import de.teamplaner.model.TeamRole
 import de.teamplaner.model.Teilnahme
 import de.teamplaner.model.TeilnahmeStatus
+import de.teamplaner.model.UserSearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -39,13 +40,15 @@ class TeamApiClient(
         }
     }
 
-    suspend fun createTeam(token: String, name: String): Result<Unit> {
+    suspend fun createTeam(token: String, name: String): Result<Team> {
         return request(
             token = token,
             path = "/teams",
             method = "POST",
             body = JSONObject().put("name", name)
-        ) {}
+        ) { json ->
+            decodeTeam(json.getJSONObject("team"))
+        }
     }
 
     suspend fun joinTeam(token: String, inviteCode: String): Result<Unit> {
@@ -57,23 +60,29 @@ class TeamApiClient(
         ) {}
     }
 
-    suspend fun inviteMember(token: String, teamId: String, user: String): Result<Unit> {
+    suspend fun inviteMember(token: String, teamId: String, userId: String): Result<Unit> {
         return request(
             token = token,
             path = "/teams/$teamId/invites",
             method = "POST",
-            body = JSONObject().put("user", user)
+            body = JSONObject().put("userId", userId)
         ) {}
     }
 
-    suspend fun searchUsers(token: String, query: String): Result<List<String>> {
+    suspend fun searchUsers(token: String, query: String, teamId: String?): Result<List<UserSearchResult>> {
+        val teamParam = teamId?.let { "&teamId=${it.urlEncode()}" }.orEmpty()
+
         return request(
             token = token,
-            path = "/users?search=${query.urlEncode()}",
+            path = "/users?search=${query.urlEncode()}$teamParam",
             method = "GET"
         ) { json ->
             json.getJSONArray("users").mapJsonObjects { user ->
-                user.getString("name")
+                UserSearchResult(
+                    id = user.getString("id"),
+                    name = user.getString("name"),
+                    email = user.getString("email")
+                )
             }
         }
     }
@@ -91,6 +100,14 @@ class TeamApiClient(
         return request(
             token = token,
             path = "/teams/$teamId/members/$memberId",
+            method = "DELETE"
+        ) {}
+    }
+
+    suspend fun removeTeam(token: String, teamId: String): Result<Unit> {
+        return request(
+            token = token,
+            path = "/teams/$teamId",
             method = "DELETE"
         ) {}
     }
@@ -268,6 +285,7 @@ class TeamApiClient(
         return TeamRequest(
             id = json.getString("id"),
             teamId = json.getString("teamId"),
+            teamName = json.optString("teamName", ""),
             userName = json.getString("userName"),
             type = TeamRequestType.valueOf(json.getString("type")),
             status = TeamRequestStatus.valueOf(json.getString("status"))

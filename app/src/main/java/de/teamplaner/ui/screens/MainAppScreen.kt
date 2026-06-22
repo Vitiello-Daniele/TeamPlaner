@@ -45,6 +45,8 @@ import de.teamplaner.model.Team
 import de.teamplaner.model.TeamEvent
 import de.teamplaner.model.TeamMember
 import de.teamplaner.model.TeamRequestStatus
+import de.teamplaner.model.TeilnahmeStatus
+import de.teamplaner.model.UserSearchResult
 import de.teamplaner.ui.state.MainAppState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,7 +74,8 @@ fun MainAppScreen(
     var remoteData by remember(token) { mutableStateOf<TeamPlanerData?>(null) }
     var remoteError by remember { mutableStateOf("") }
     var isLoadingRemoteData by remember { mutableStateOf(false) }
-    var memberSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var memberSuggestions by remember { mutableStateOf<List<UserSearchResult>>(emptyList()) }
+    var selectedTeamId by remember(token) { mutableStateOf<String?>(null) }
     val usesBackend = token.isNotBlank()
 
     fun reloadRemoteTeams() {
@@ -108,6 +111,7 @@ fun MainAppScreen(
         MainAppState(
             displayName = displayName,
             repository = localRepository,
+            initialSelectedTeamId = selectedTeamId,
             initialData = remoteData ?: if (usesBackend) {
                 TeamPlanerData(
                     teams = emptyList(),
@@ -132,6 +136,11 @@ fun MainAppScreen(
         }
     }
 
+    fun selectTeam(teamId: String) {
+        selectedTeamId = teamId
+        appState.selectTeam(teamId)
+    }
+
     fun searchMembers(query: String) {
         val trimmedQuery = query.trim()
 
@@ -146,15 +155,8 @@ fun MainAppScreen(
         }
 
         scope.launch {
-            teamApiClient.searchUsers(token, trimmedQuery)
-                .onSuccess { names ->
-                    val teamMemberNames = appState.selectedTeam
-                        ?.members
-                        ?.map { it.name.lowercase() }
-                        ?.toSet()
-                        .orEmpty()
-                    memberSuggestions = names.filterNot { it.lowercase() in teamMemberNames }
-                }
+            teamApiClient.searchUsers(token, trimmedQuery, appState.selectedTeam?.id)
+                .onSuccess { users -> memberSuggestions = users }
                 .onFailure {
                     memberSuggestions = emptyList()
                     remoteError = it.message ?: "Nutzer konnten nicht gesucht werden"
@@ -221,12 +223,24 @@ fun MainAppScreen(
                 selectedTeamInvites = appState.selectedTeam?.let { appState.openInvites(it.id) }.orEmpty(),
                 memberSuggestions = memberSuggestions,
                 teamName = appState::teamName,
-                onTeamSelect = appState::selectTeam,
+                onTeamSelect = ::selectTeam,
                 onTeamCreate = { teamName ->
                     if (usesBackend) {
-                        runTeamAction { teamApiClient.createTeam(token, teamName) }
+                        scope.launch {
+                            isLoadingRemoteData = true
+                            teamApiClient.createTeam(token, teamName)
+                                .onSuccess { team ->
+                                    selectedTeamId = team.id
+                                    reloadRemoteTeams()
+                                }
+                                .onFailure {
+                                    remoteError = it.message ?: "Team konnte nicht erstellt werden"
+                                }
+                            isLoadingRemoteData = false
+                        }
                     } else {
                         appState.createTeam(teamName)
+                        selectedTeamId = appState.selectedTeam?.id
                     }
                 },
                 onTeamJoin = { inviteCode, onResult ->
@@ -293,6 +307,14 @@ fun MainAppScreen(
                         runTeamAction { teamApiClient.deactivateInviteCode(token, teamId) }
                     } else {
                         appState.deactivateInviteCode()
+                    }
+                },
+                onTeamRemove = {
+                    val teamId = appState.selectedTeam?.id
+                    if (usesBackend && teamId != null) {
+                        runTeamAction { teamApiClient.removeTeam(token, teamId) }
+                    } else {
+                        appState.removeSelectedTeam()
                     }
                 },
                 onEventCreate = { event, shouldAutoAssign ->
@@ -378,6 +400,14 @@ fun MainAppScreen(
                     AppTab.Events -> GlobalEventScreen(
                 teams = appState.teams,
                 events = appState.events,
+                currentName = displayName,
+                onEventUpdate = { oldEvent, newEvent ->
+                    if (usesBackend) {
+                        runTeamAction { teamApiClient.updateEvent(token, newEvent.copy(id = oldEvent.id)) }
+                    } else {
+                        appState.updateEvent(oldEvent, newEvent)
+                    }
+                },
                 modifier = Modifier
             )
                     AppTab.Plan -> GlobalPlanScreen(
@@ -442,13 +472,30 @@ private fun BackendStatusBar(
 private fun GlobalEventScreen(
     teams: List<Team>,
     events: List<TeamEvent>,
+    currentName: String,
+    onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showUpcoming by remember { mutableStateOf(true) }
+    var selectedEventId by remember { mutableStateOf<String?>(null) }
+    val selectedEvent = events.firstOrNull { it.id == selectedEventId }
+    val selectedTeam = selectedEvent?.let { event -> teams.firstOrNull { it.id == event.teamId } }
     val visibleTeamIds = teams.map { it.id }.toSet()
     val filteredEvents = events.filter { event ->
         event.teamId in visibleTeamIds &&
             if (showUpcoming) !event.date.startsWith("0") else event.date.startsWith("0")
+    }
+
+    if (selectedEvent != null && selectedTeam != null) {
+        GlobalEventDetailScreen(
+            team = selectedTeam,
+            event = selectedEvent,
+            currentName = currentName,
+            onBackClick = { selectedEventId = null },
+            onEventUpdate = onEventUpdate,
+            modifier = modifier
+        )
+        return
     }
 
     Column(
@@ -486,6 +533,7 @@ private fun GlobalEventScreen(
                         .padding(top = 12.dp)
                         .widthIn(max = 520.dp)
                         .fillMaxWidth()
+                        .clickable { selectedEventId = event.id }
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(text = teamName, style = MaterialTheme.typography.labelLarge)
@@ -493,6 +541,99 @@ private fun GlobalEventScreen(
                         Text(text = "${event.date} um ${event.time}", modifier = Modifier.fieldTopPadding(4))
                         Text(text = event.location.ifBlank { "Kein Ort angegeben" }, modifier = Modifier.fieldTopPadding(4))
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlobalEventDetailScreen(
+    team: Team,
+    event: TeamEvent,
+    currentName: String,
+    onBackClick: () -> Unit,
+    onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val currentMember = team.members.firstOrNull { it.name == currentName }
+    val ownParticipation = event.teilnahmen.firstOrNull { it.memberId == currentMember?.id }
+    val offene = event.teilnahmen.count { it.status == TeilnahmeStatus.Offen }
+    val zugesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Zugesagt }
+    val abgesagt = event.teilnahmen.count { it.status == TeilnahmeStatus.Abgesagt }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        ScreenHeader(
+            title = "Termindetails",
+            onBackClick = onBackClick
+        )
+        Text(
+            text = event.title,
+            modifier = Modifier.fieldTopPadding(24),
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Text(
+            text = team.name,
+            modifier = Modifier.fieldTopPadding(8),
+            style = MaterialTheme.typography.titleMedium
+        )
+        Text(
+            text = "${event.date} um ${event.time}",
+            modifier = Modifier.fieldTopPadding(16),
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Text(
+            text = event.location.ifBlank { "Kein Ort angegeben" },
+            modifier = Modifier.fieldTopPadding(8),
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Text(
+            text = "Status: $zugesagt zugesagt, $abgesagt abgesagt, $offene offen",
+            modifier = Modifier.fieldTopPadding(16),
+            style = MaterialTheme.typography.bodyLarge
+        )
+
+        Text(
+            text = "Meine Teilnahme",
+            modifier = Modifier.fieldTopPadding(24),
+            style = MaterialTheme.typography.titleMedium
+        )
+        if (ownParticipation == null) {
+            Text(
+                text = "Du bist bei diesem Termin nicht als Teilnehmer eingetragen.",
+                modifier = Modifier.fieldTopPadding(8),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fieldTopPadding(8)
+            ) {
+                TeilnahmeStatus.entries.forEach { status ->
+                    androidx.compose.material3.FilterChip(
+                        selected = ownParticipation.status == status,
+                        onClick = {
+                            onEventUpdate(
+                                event,
+                                event.copy(
+                                    teilnahmen = event.teilnahmen.map { teilnahme ->
+                                        if (teilnahme.memberId == ownParticipation.memberId) {
+                                            teilnahme.copy(status = status)
+                                        } else {
+                                            teilnahme
+                                        }
+                                    }
+                                )
+                            )
+                        },
+                        label = { Text(text = status.label) },
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
                 }
             }
         }

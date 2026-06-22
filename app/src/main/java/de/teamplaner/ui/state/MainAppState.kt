@@ -21,6 +21,7 @@ class MainAppState(
     private val displayName: String,
     private val repository: TeamPlanerRepository = FakeTeamPlanerRepository(),
     initialData: TeamPlanerData = repository.loadData(displayName),
+    initialSelectedTeamId: String? = null,
     private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator(),
     private val idGenerator: IdGenerator = IdGenerator(),
     private val dutyAssignmentService: DutyAssignmentService = DutyAssignmentService()
@@ -32,7 +33,9 @@ class MainAppState(
             team.members.any { it.name == displayName }
         }
 
-    var selectedTeamId by mutableStateOf(teams.firstOrNull()?.id)
+    var selectedTeamId by mutableStateOf(
+        teams.firstOrNull { it.id == initialSelectedTeamId }?.id ?: teams.firstOrNull()?.id
+    )
         private set
 
     var events by mutableStateOf(initialData.events)
@@ -242,6 +245,19 @@ class MainAppState(
             assignments = assignments.filterNot { it.memberId == member.id }
             saveData()
         }
+    }
+
+    fun removeSelectedTeam() {
+        val teamId = selectedTeamId ?: return
+        val teamEventIds = events.filter { it.teamId == teamId }.map { it.id }.toSet()
+
+        allTeams = allTeams.filterNot { it.id == teamId }
+        events = events.filterNot { it.teamId == teamId }
+        duties = duties.filterNot { it.teamId == teamId }
+        assignments = assignments.filterNot { it.eventId in teamEventIds }
+        requests = requests.filterNot { it.teamId == teamId }
+        selectedTeamId = teams.firstOrNull()?.id
+        saveData()
     }
 
     fun refreshInviteCode() {

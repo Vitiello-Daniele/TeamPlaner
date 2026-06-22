@@ -158,6 +158,9 @@ function mapRequest(request: {
   teamId: string;
   type: string;
   status: string;
+  team: {
+    name: string;
+  };
   user: {
     name: string;
   };
@@ -165,6 +168,7 @@ function mapRequest(request: {
   return {
     id: request.id,
     teamId: request.teamId,
+    teamName: request.team.name,
     userName: request.user.name,
     type: request.type,
     status: request.status
@@ -484,11 +488,23 @@ app.get("/auth/me", requireAuth, async (request: AuthRequest, response: Response
 
 app.get("/users", requireAuth, async (request: AuthRequest, response: Response) => {
   const search = queryParam(request.query.search).trim().toLowerCase();
+  const teamId = queryParam(request.query.teamId).trim();
 
   if (search.length < 2) {
     response.json({ users: [] });
     return;
   }
+
+  const existingMemberUserIds = teamId
+    ? new Set(
+        (
+          await prisma.teamMember.findMany({
+            where: { teamId },
+            select: { userId: true }
+          })
+        ).map((member) => member.userId)
+      )
+    : new Set<string>();
 
   const users = await prisma.user.findMany({
     orderBy: {
@@ -502,8 +518,11 @@ app.get("/users", requireAuth, async (request: AuthRequest, response: Response) 
   });
   const filteredUsers = users
     .filter((user) =>
-      user.name.toLowerCase().includes(search) ||
-        user.email.toLowerCase().includes(search)
+      !existingMemberUserIds.has(user.id) &&
+        (
+          user.name.toLowerCase().includes(search) ||
+            user.email.toLowerCase().includes(search)
+        )
     )
     .slice(0, 8);
 
@@ -561,6 +580,11 @@ app.get("/teams", requireAuth, async (request: AuthRequest, response: Response) 
       ]
     },
     include: {
+      team: {
+        select: {
+          name: true
+        }
+      },
       user: {
         select: {
           name: true
@@ -701,6 +725,11 @@ app.post("/teams/join", requireAuth, async (request: AuthRequest, response: Resp
       status: "Open"
     },
     include: {
+      team: {
+        select: {
+          name: true
+        }
+      },
       user: {
         select: {
           name: true
@@ -722,6 +751,11 @@ app.post("/teams/join", requireAuth, async (request: AuthRequest, response: Resp
       status: "Open"
     },
     include: {
+      team: {
+        select: {
+          name: true
+        }
+      },
       user: {
         select: {
           name: true
@@ -736,6 +770,7 @@ app.post("/teams/join", requireAuth, async (request: AuthRequest, response: Resp
 app.post("/teams/:teamId/invites", requireAuth, async (request: AuthRequest, response: Response) => {
   const userId = request.userId;
   const teamId = routeParam(request.params.teamId);
+  const invitedUserId = String(request.body.userId ?? "").trim();
   const userQuery = String(request.body.user ?? "").trim().toLowerCase();
 
   if (!userId) {
@@ -748,22 +783,30 @@ app.post("/teams/:teamId/invites", requireAuth, async (request: AuthRequest, res
     return;
   }
 
-  if (!userQuery) {
+  if (!invitedUserId && !userQuery) {
     response.status(400).json({ error: "Nutzer ist erforderlich" });
     return;
   }
 
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      name: true,
-      email: true
-    }
-  });
-  const invitedUser = users.find((user) =>
-    user.email.toLowerCase() === userQuery ||
-      user.name.toLowerCase() === userQuery
-  );
+  const invitedUser = invitedUserId
+    ? await prisma.user.findUnique({
+        where: { id: invitedUserId },
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      })
+    : await prisma.user.findFirst({
+      where: {
+          email: userQuery
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      });
 
   if (!invitedUser) {
     response.status(404).json({ error: "Nutzer wurde nicht gefunden" });
@@ -806,6 +849,11 @@ app.post("/teams/:teamId/invites", requireAuth, async (request: AuthRequest, res
       status: "Open"
     },
     include: {
+      team: {
+        select: {
+          name: true
+        }
+      },
       user: {
         select: {
           name: true
@@ -835,6 +883,11 @@ app.patch("/team-requests/:requestId", requireAuth, async (request: AuthRequest,
   const teamRequest = await prisma.teamRequest.findUnique({
     where: { id: requestId },
     include: {
+      team: {
+        select: {
+          name: true
+        }
+      },
       user: {
         select: {
           name: true
@@ -863,6 +916,11 @@ app.patch("/team-requests/:requestId", requireAuth, async (request: AuthRequest,
     where: { id: requestId },
     data: { status },
     include: {
+      team: {
+        select: {
+          name: true
+        }
+      },
       user: {
         select: {
           name: true
@@ -922,6 +980,27 @@ app.delete("/teams/:teamId/members/:memberId", requireAuth, async (request: Auth
 
   await prisma.teamMember.delete({
     where: { id: memberId }
+  });
+
+  response.status(204).send();
+});
+
+app.delete("/teams/:teamId", requireAuth, async (request: AuthRequest, response: Response) => {
+  const userId = request.userId;
+  const teamId = routeParam(request.params.teamId);
+
+  if (!userId) {
+    response.status(401).json({ error: "Nicht angemeldet" });
+    return;
+  }
+
+  if (!(await canManageTeam(teamId, userId))) {
+    response.status(403).json({ error: "Keine Berechtigung für dieses Team" });
+    return;
+  }
+
+  await prisma.team.delete({
+    where: { id: teamId }
   });
 
   response.status(204).send();
