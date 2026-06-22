@@ -15,7 +15,7 @@ import androidx.compose.ui.text.input.KeyboardType
 @Composable
 fun LoginScreen(
     onLoginClick: (String, String, (String) -> Unit) -> Unit,
-    onDebugLoginClick: (String) -> Unit,
+    onDebugLoginClick: (String, String, (String) -> Unit) -> Unit,
     onBackClick: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
@@ -41,6 +41,12 @@ fun LoginScreen(
             modifier = Modifier.fieldTopPadding(12),
             isPassword = true
         )
+        if (errorText.isNotBlank()) {
+            ErrorMessage(
+                text = errorText,
+                modifier = Modifier.fieldTopPadding(12)
+            )
+        }
         Button(
             onClick = {
                 errorText = ""
@@ -51,22 +57,22 @@ fun LoginScreen(
             Text(text = "Einloggen")
         }
         OutlinedButton(
-            onClick = { onDebugLoginClick("Daniele V.") },
+            onClick = {
+                errorText = ""
+                onDebugLoginClick("daniele-vitiello@web.de", "123456") { errorText = it }
+            },
             modifier = defaultActionModifier(topPadding = 12)
         ) {
             Text(text = "DEBUG: Trainerlogin")
         }
         OutlinedButton(
-            onClick = { onDebugLoginClick("Leon M.") },
+            onClick = {
+                errorText = ""
+                onDebugLoginClick("max-mustermann@web.de", "123456") { errorText = it }
+            },
             modifier = defaultActionModifier(topPadding = 12)
         ) {
             Text(text = "DEBUG: Spielerlogin")
-        }
-        if (errorText.isNotBlank()) {
-            ErrorMessage(
-                text = errorText,
-                modifier = Modifier.fieldTopPadding(8)
-            )
         }
         OutlinedButton(
             onClick = onBackClick,

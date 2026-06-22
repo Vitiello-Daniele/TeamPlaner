@@ -72,6 +72,7 @@ fun MainAppScreen(
     var remoteData by remember(token) { mutableStateOf<TeamPlanerData?>(null) }
     var remoteError by remember { mutableStateOf("") }
     var isLoadingRemoteData by remember { mutableStateOf(false) }
+    var memberSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     val usesBackend = token.isNotBlank()
 
     fun reloadRemoteTeams() {
@@ -128,6 +129,36 @@ fun MainAppScreen(
                 .onSuccess { reloadRemoteTeams() }
                 .onFailure { remoteError = it.message ?: "Aktion fehlgeschlagen" }
             isLoadingRemoteData = false
+        }
+    }
+
+    fun searchMembers(query: String) {
+        val trimmedQuery = query.trim()
+
+        if (trimmedQuery.length < 2) {
+            memberSuggestions = emptyList()
+            return
+        }
+
+        if (!usesBackend) {
+            memberSuggestions = emptyList()
+            return
+        }
+
+        scope.launch {
+            teamApiClient.searchUsers(token, trimmedQuery)
+                .onSuccess { names ->
+                    val teamMemberNames = appState.selectedTeam
+                        ?.members
+                        ?.map { it.name.lowercase() }
+                        ?.toSet()
+                        .orEmpty()
+                    memberSuggestions = names.filterNot { it.lowercase() in teamMemberNames }
+                }
+                .onFailure {
+                    memberSuggestions = emptyList()
+                    remoteError = it.message ?: "Nutzer konnten nicht gesucht werden"
+                }
         }
     }
 
@@ -188,6 +219,7 @@ fun MainAppScreen(
                 openJoinRequests = appState.openJoinRequests,
                 selectedTeamJoinRequests = appState.selectedTeam?.let { appState.openJoinRequests(it.id) }.orEmpty(),
                 selectedTeamInvites = appState.selectedTeam?.let { appState.openInvites(it.id) }.orEmpty(),
+                memberSuggestions = memberSuggestions,
                 teamName = appState::teamName,
                 onTeamSelect = appState::selectTeam,
                 onTeamCreate = { teamName ->
@@ -197,13 +229,26 @@ fun MainAppScreen(
                         appState.createTeam(teamName)
                     }
                 },
-                onTeamJoin = { inviteCode ->
+                onTeamJoin = { inviteCode, onResult ->
                     if (usesBackend) {
-                        runTeamAction { teamApiClient.joinTeam(token, inviteCode) }
+                        scope.launch {
+                            isLoadingRemoteData = true
+                            teamApiClient.joinTeam(token, inviteCode)
+                                .onSuccess {
+                                    onResult(null)
+                                    reloadRemoteTeams()
+                                }
+                                .onFailure {
+                                    onResult("Invite-Code nicht gültig")
+                                }
+                            isLoadingRemoteData = false
+                        }
                     } else {
                         appState.joinTeam(inviteCode)
+                        onResult(null)
                     }
                 },
+                onMemberSearch = ::searchMembers,
                 onMemberInvite = { user ->
                     val teamId = appState.selectedTeam?.id
                     if (usesBackend && teamId != null) {
@@ -250,12 +295,31 @@ fun MainAppScreen(
                         appState.deactivateInviteCode()
                     }
                 },
-                onEventCreate = { event ->
+                onEventCreate = { event, shouldAutoAssign ->
                     val teamId = appState.selectedTeam?.id
                     if (usesBackend && teamId != null) {
-                        runTeamAction { teamApiClient.createEvent(token, teamId, event) }
+                        scope.launch {
+                            isLoadingRemoteData = true
+                            teamApiClient.createEvent(token, teamId, event)
+                                .onSuccess {
+                                    if (shouldAutoAssign) {
+                                        teamApiClient.createFairPlan(token, teamId, false)
+                                            .onFailure { error ->
+                                                remoteError = error.message ?: "Plan konnte nicht erstellt werden"
+                                            }
+                                    }
+                                    reloadRemoteTeams()
+                                }
+                                .onFailure {
+                                    remoteError = it.message ?: "Termin konnte nicht gespeichert werden"
+                                }
+                            isLoadingRemoteData = false
+                        }
                     } else {
                         appState.createEvent(event)
+                        if (shouldAutoAssign) {
+                            appState.createFairPlan(false)
+                        }
                     }
                 },
                 onEventUpdate = { oldEvent, newEvent ->

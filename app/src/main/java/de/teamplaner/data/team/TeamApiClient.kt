@@ -66,6 +66,18 @@ class TeamApiClient(
         ) {}
     }
 
+    suspend fun searchUsers(token: String, query: String): Result<List<String>> {
+        return request(
+            token = token,
+            path = "/users?search=${query.urlEncode()}",
+            method = "GET"
+        ) { json ->
+            json.getJSONArray("users").mapJsonObjects { user ->
+                user.getString("name")
+            }
+        }
+    }
+
     suspend fun updateRequest(token: String, requestId: String, status: TeamRequestStatus): Result<Unit> {
         return request(
             token = token,
@@ -337,5 +349,9 @@ class TeamApiClient(
         return List(length()) { index ->
             getString(index)
         }
+    }
+
+    private fun String.urlEncode(): String {
+        return java.net.URLEncoder.encode(this, Charsets.UTF_8.name())
     }
 }

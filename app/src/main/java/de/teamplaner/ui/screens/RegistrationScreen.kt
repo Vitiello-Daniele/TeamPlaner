@@ -54,6 +54,12 @@ fun RegistrationScreen(
             modifier = Modifier.fieldTopPadding(12),
             isPassword = true
         )
+        if (errorText.isNotBlank()) {
+            ErrorMessage(
+                text = errorText,
+                modifier = Modifier.fieldTopPadding(12)
+            )
+        }
         Button(
             onClick = {
                 errorText = ""
@@ -83,12 +89,6 @@ fun RegistrationScreen(
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = "Registrieren")
-        }
-        if (errorText.isNotBlank()) {
-            ErrorMessage(
-                text = errorText,
-                modifier = Modifier.fieldTopPadding(8)
-            )
         }
         OutlinedButton(
             onClick = onBackClick,

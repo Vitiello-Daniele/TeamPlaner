@@ -63,17 +63,19 @@ fun TeamScreen(
     openJoinRequests: List<TeamRequest>,
     selectedTeamJoinRequests: List<TeamRequest>,
     selectedTeamInvites: List<TeamRequest>,
+    memberSuggestions: List<String>,
     teamName: (String) -> String,
     onTeamSelect: (String) -> Unit,
     onTeamCreate: (String) -> Unit,
-    onTeamJoin: (String) -> Unit,
+    onTeamJoin: (String, (String?) -> Unit) -> Unit,
+    onMemberSearch: (String) -> Unit,
     onMemberInvite: (String) -> Unit,
     onMemberRemove: (TeamMember) -> Unit,
     onRequestAccept: (TeamRequest) -> Unit,
     onRequestReject: (TeamRequest) -> Unit,
     onInviteCodeRefresh: () -> Unit,
     onInviteCodeDeactivate: () -> Unit,
-    onEventCreate: (TeamEvent) -> Unit,
+    onEventCreate: (TeamEvent, Boolean) -> Unit,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit,
     onDutyCreate: (Duty) -> Unit,
@@ -110,9 +112,15 @@ fun TeamScreen(
             modifier = modifier
         )
         TeamView.Join -> JoinTeamContent(
-            onJoinClick = { inviteCode ->
-                onTeamJoin(inviteCode)
-                teamView = TeamView.List
+            onJoinClick = { inviteCode, onResult ->
+                onTeamJoin(inviteCode) { errorText ->
+                    if (errorText == null) {
+                        onResult(null)
+                        teamView = TeamView.List
+                    } else {
+                        onResult(errorText)
+                    }
+                }
             },
             onBackClick = { teamView = TeamView.List },
             modifier = modifier
@@ -130,7 +138,9 @@ fun TeamScreen(
                     assignments = selectedTeamAssignments,
                     joinRequests = selectedTeamJoinRequests,
                     invites = selectedTeamInvites,
+                    memberSuggestions = memberSuggestions,
                     onBackClick = { teamView = TeamView.List },
+                    onMemberSearch = onMemberSearch,
                     onMemberInvite = onMemberInvite,
                     onMemberRemove = onMemberRemove,
                     onRequestAccept = onRequestAccept,
@@ -220,7 +230,7 @@ private fun TeamListContent(
 
         if (openInvites.isNotEmpty() || openJoinRequests.isNotEmpty()) {
             Text(
-                text = "Offene Einladungen",
+                text = openRequestTitle(openInvites, openJoinRequests),
                 modifier = Modifier.fieldTopPadding(16),
                 style = MaterialTheme.typography.titleMedium
             )
@@ -273,14 +283,16 @@ private fun TeamDetailContent(
     assignments: List<DutyAssignment>,
     joinRequests: List<TeamRequest>,
     invites: List<TeamRequest>,
+    memberSuggestions: List<String>,
     onBackClick: () -> Unit,
+    onMemberSearch: (String) -> Unit,
     onMemberInvite: (String) -> Unit,
     onMemberRemove: (TeamMember) -> Unit,
     onRequestAccept: (TeamRequest) -> Unit,
     onRequestReject: (TeamRequest) -> Unit,
     onInviteCodeRefresh: () -> Unit,
     onInviteCodeDeactivate: () -> Unit,
-    onEventCreate: (TeamEvent) -> Unit,
+    onEventCreate: (TeamEvent, Boolean) -> Unit,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit,
     onDutyCreate: (Duty) -> Unit,
@@ -304,7 +316,6 @@ private fun TeamDetailContent(
                 onEventCreate = onEventCreate,
                 onEventUpdate = onEventUpdate,
                 onEventRemove = onEventRemove,
-                onAutoAssign = { onFairPlanCreate(false) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -344,8 +355,10 @@ private fun TeamDetailContent(
             onMemberRemove = onMemberRemove,
             joinRequests = joinRequests,
             invites = invites,
+            memberSuggestions = memberSuggestions,
             onRequestAccept = onRequestAccept,
             onRequestReject = onRequestReject,
+            onMemberSearch = onMemberSearch,
             onInviteCodeRefresh = onInviteCodeRefresh,
             onInviteCodeDeactivate = onInviteCodeDeactivate,
             modifier = modifier
@@ -373,10 +386,12 @@ private fun TeamDetailOverview(
     canManageTeam: Boolean,
     onBackClick: () -> Unit,
     onTabSelect: (TeamDetailTab) -> Unit,
+    onMemberSearch: (String) -> Unit,
     onMemberInvite: (String) -> Unit,
     onMemberRemove: (TeamMember) -> Unit,
     joinRequests: List<TeamRequest>,
     invites: List<TeamRequest>,
+    memberSuggestions: List<String>,
     onRequestAccept: (TeamRequest) -> Unit,
     onRequestReject: (TeamRequest) -> Unit,
     onInviteCodeRefresh: () -> Unit,
@@ -385,7 +400,6 @@ private fun TeamDetailOverview(
 ) {
     var memberName by remember { mutableStateOf("") }
     var memberError by remember { mutableStateOf("") }
-    val memberSuggestions = listOf("Leon M.", "Daniel", "David", "Dario", "Max", "Mia", "Laura", "Lea", "Tom", "Sara")
 
     if (tab == TeamDetailTab.Members) {
         Column(
@@ -405,8 +419,12 @@ private fun TeamDetailOverview(
                 )
                 AuthTextField(
                     value = memberName,
-                    onValueChange = { memberName = it },
-                    label = "Mitgliedsname",
+                    onValueChange = {
+                        memberName = it
+                        memberError = ""
+                        onMemberSearch(it)
+                    },
+                    label = "Name oder E-Mail",
                     modifier = Modifier.fieldTopPadding(12)
                 )
                 MemberSuggestions(
@@ -415,6 +433,12 @@ private fun TeamDetailOverview(
                     suggestions = memberSuggestions,
                     onSuggestionClick = { memberName = it }
                 )
+                if (memberError.isNotBlank()) {
+                    ErrorMessage(
+                        text = memberError,
+                        modifier = Modifier.fieldTopPadding(8)
+                    )
+                }
                 Button(
                     onClick = {
                         val trimmedName = memberName.trim()
@@ -432,13 +456,6 @@ private fun TeamDetailOverview(
                     modifier = defaultActionModifier(topPadding = 12)
                 ) {
                     Text(text = "Einladung senden")
-                }
-                if (memberError.isNotBlank()) {
-                    Text(
-                        text = memberError,
-                        modifier = Modifier.fieldTopPadding(8),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
                 }
             }
 
@@ -615,6 +632,8 @@ private fun RequestList(
                 } else {
                     "Anfrage wartet auf Trainer"
                 },
+                acceptLabel = "Annehmen",
+                rejectLabel = if (teamName == null) "Ablehnen" else "Abbrechen",
                 onAcceptClick = onRequestAccept?.let { accept -> { accept(request) } },
                 onRejectClick = { onRequestReject(request) }
             )
@@ -627,6 +646,8 @@ private fun RequestList(
                 } else {
                     "Einladung zum Team"
                 },
+                acceptLabel = "Annehmen",
+                rejectLabel = if (teamName == null) "Zurückziehen" else "Ablehnen",
                 onAcceptClick = onInviteAccept?.let { accept -> { accept(invite) } },
                 onRejectClick = { onRequestReject(invite) }
             )
@@ -638,6 +659,8 @@ private fun RequestList(
 private fun CompactRequestRow(
     title: String,
     subtitle: String,
+    acceptLabel: String,
+    rejectLabel: String,
     onAcceptClick: (() -> Unit)?,
     onRejectClick: () -> Unit
 ) {
@@ -660,14 +683,25 @@ private fun CompactRequestRow(
             }
             if (onAcceptClick != null) {
                 Button(onClick = onAcceptClick) {
-                    Text(text = "OK")
+                    Text(text = acceptLabel)
                 }
                 Spacer(modifier = Modifier.width(6.dp))
             }
             OutlinedButton(onClick = onRejectClick) {
-                Text(text = "Nein")
+                Text(text = rejectLabel)
             }
         }
+    }
+}
+
+private fun openRequestTitle(
+    openInvites: List<TeamRequest>,
+    openJoinRequests: List<TeamRequest>
+): String {
+    return when {
+        openInvites.isNotEmpty() && openJoinRequests.isNotEmpty() -> "Offene Anfragen und Einladungen"
+        openJoinRequests.isNotEmpty() -> "Offene Anfragen"
+        else -> "Offene Einladungen"
     }
 }
 
@@ -735,6 +769,9 @@ private fun CreateTeamContent(
             label = "Teamname",
             modifier = Modifier.fieldTopPadding(32)
         )
+        if (errorText.isNotBlank()) {
+            ErrorMessage(text = errorText, modifier = Modifier.fieldTopPadding(12))
+        }
         Button(
             onClick = {
                 val trimmedName = teamName.trim()
@@ -749,9 +786,6 @@ private fun CreateTeamContent(
         ) {
             Text(text = "Speichern")
         }
-        if (errorText.isNotBlank()) {
-            ErrorMessage(text = errorText, modifier = Modifier.fieldTopPadding(8))
-        }
         OutlinedButton(onClick = onBackClick, modifier = defaultActionModifier(topPadding = 12)) {
             Text(text = "Zurück")
         }
@@ -760,7 +794,7 @@ private fun CreateTeamContent(
 
 @Composable
 private fun JoinTeamContent(
-    onJoinClick: (String) -> Unit,
+    onJoinClick: (String, (String?) -> Unit) -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -775,6 +809,9 @@ private fun JoinTeamContent(
             label = "Invite-Code",
             modifier = Modifier.fieldTopPadding(32)
         )
+        if (errorText.isNotBlank()) {
+            ErrorMessage(text = errorText, modifier = Modifier.fieldTopPadding(12))
+        }
         Button(
             onClick = {
                 val trimmedCode = inviteCode.trim()
@@ -782,15 +819,14 @@ private fun JoinTeamContent(
                 if (trimmedCode.isBlank()) {
                     errorText = "Bitte einen Invite-Code eingeben"
                 } else {
-                    onJoinClick(trimmedCode)
+                    onJoinClick(trimmedCode) { error ->
+                        errorText = error.orEmpty()
+                    }
                 }
             },
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = "Beitreten")
-        }
-        if (errorText.isNotBlank()) {
-            ErrorMessage(text = errorText, modifier = Modifier.fieldTopPadding(8))
         }
         OutlinedButton(onClick = onBackClick, modifier = defaultActionModifier(topPadding = 12)) {
             Text(text = "Zurück")

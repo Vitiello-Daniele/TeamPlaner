@@ -85,10 +85,12 @@ fun HomeScreen() {
                             .onFailure { onError(it.message ?: "Login fehlgeschlagen") }
                     }
                 },
-                onDebugLoginClick = { name ->
-                    profileName = name
-                    sessionToken = ""
-                    currentView = HomeView.App
+                onDebugLoginClick = { email, password, onError ->
+                    scope.launch {
+                        authApiClient.login(email, password)
+                            .onSuccess(::openApp)
+                            .onFailure { onError(it.message ?: "Login fehlgeschlagen") }
+                    }
                 },
                 onBackClick = { currentView = HomeView.Start }
             )

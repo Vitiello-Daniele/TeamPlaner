@@ -63,6 +63,14 @@ function routeParam(value: string | string[] | undefined): string {
   return value ?? "";
 }
 
+function queryParam(value: unknown): string {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? "");
+  }
+
+  return String(value ?? "");
+}
+
 function isValidEventDate(date: string): boolean {
   const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
 
@@ -474,10 +482,17 @@ app.get("/auth/me", requireAuth, async (request: AuthRequest, response: Response
   });
 });
 
-app.get("/users", async (_request, response) => {
+app.get("/users", requireAuth, async (request: AuthRequest, response: Response) => {
+  const search = queryParam(request.query.search).trim().toLowerCase();
+
+  if (search.length < 2) {
+    response.json({ users: [] });
+    return;
+  }
+
   const users = await prisma.user.findMany({
     orderBy: {
-      createdAt: "desc"
+      name: "asc"
     },
     select: {
       id: true,
@@ -485,8 +500,14 @@ app.get("/users", async (_request, response) => {
       email: true
     }
   });
+  const filteredUsers = users
+    .filter((user) =>
+      user.name.toLowerCase().includes(search) ||
+        user.email.toLowerCase().includes(search)
+    )
+    .slice(0, 8);
 
-  response.json({ users });
+  response.json({ users: filteredUsers });
 });
 
 app.get("/teams", requireAuth, async (request: AuthRequest, response: Response) => {
@@ -828,9 +849,12 @@ app.patch("/team-requests/:requestId", requireAuth, async (request: AuthRequest,
   }
 
   const isOwnInvite = teamRequest.type === "Invite" && teamRequest.userId === userId;
+  const isOwnJoinCancel = teamRequest.type === "JoinRequest" &&
+    teamRequest.userId === userId &&
+    status === "Rejected";
   const isTrainer = await canManageTeam(teamRequest.teamId, userId);
 
-  if (!isOwnInvite && !isTrainer) {
+  if (!isOwnInvite && !isOwnJoinCancel && !isTrainer) {
     response.status(403).json({ error: "Keine Berechtigung für diese Anfrage" });
     return;
   }

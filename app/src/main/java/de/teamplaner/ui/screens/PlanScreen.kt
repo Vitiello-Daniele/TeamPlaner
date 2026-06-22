@@ -599,6 +599,13 @@ private fun AssignmentFormScreen(
             }
         )
 
+        if (errorText.isNotBlank()) {
+            ErrorMessage(
+                text = errorText,
+                modifier = Modifier.fieldTopPadding(12)
+            )
+        }
+
         Button(
             onClick = {
                 val event = selectedEvent
@@ -617,13 +624,6 @@ private fun AssignmentFormScreen(
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = if (editedAssignment == null) "Zuweisen" else "Speichern")
-        }
-
-        if (errorText.isNotBlank()) {
-            ErrorMessage(
-                text = errorText,
-                modifier = Modifier.fieldTopPadding(8)
-            )
         }
     }
 }

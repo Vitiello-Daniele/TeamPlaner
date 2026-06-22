@@ -60,10 +60,9 @@ fun EventScreen(
     canManageEvents: Boolean,
     events: List<TeamEvent>,
     duties: List<Duty>,
-    onEventCreate: (TeamEvent) -> Unit,
+    onEventCreate: (TeamEvent, Boolean) -> Unit,
     onEventUpdate: (TeamEvent, TeamEvent) -> Unit,
     onEventRemove: (TeamEvent) -> Unit,
-    onAutoAssign: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var eventView by remember { mutableStateOf<EventView>(EventView.List) }
@@ -91,12 +90,9 @@ fun EventScreen(
                         val editedEvent = currentView.event
 
                         if (editedEvent == null) {
-                            onEventCreate(event)
+                            onEventCreate(event, shouldAutoAssign)
                         } else {
                             onEventUpdate(editedEvent, event)
-                        }
-                        if (shouldAutoAssign) {
-                            onAutoAssign()
                         }
                         eventView = EventView.List
                     },
@@ -335,6 +331,13 @@ private fun EventForm(
         )
     }
 
+    if (errorText.isNotBlank()) {
+        ErrorMessage(
+            text = errorText,
+            modifier = Modifier.fieldTopPadding(12)
+        )
+    }
+
     Button(
         onClick = {
             val trimmedTitle = title.trim()
@@ -376,13 +379,6 @@ private fun EventForm(
         modifier = defaultActionModifier(topPadding = 24)
     ) {
         Text(text = if (editedEvent == null) "Termin speichern" else "Änderungen speichern")
-    }
-
-    if (errorText.isNotBlank()) {
-        ErrorMessage(
-            text = errorText,
-            modifier = Modifier.fieldTopPadding(8)
-        )
     }
 
     if (showDatePicker) {

@@ -204,6 +204,12 @@ private fun DutyFormScreen(
             label = "Beschreibung",
             modifier = Modifier.fieldTopPadding(12)
         )
+        if (errorText.isNotBlank()) {
+            ErrorMessage(
+                text = errorText,
+                modifier = Modifier.fieldTopPadding(12)
+            )
+        }
         Button(
             onClick = {
                 val trimmedTitle = title.trim()
@@ -223,12 +229,6 @@ private fun DutyFormScreen(
             modifier = defaultActionModifier(topPadding = 24)
         ) {
             Text(text = "Speichern")
-        }
-        if (errorText.isNotBlank()) {
-            ErrorMessage(
-                text = errorText,
-                modifier = Modifier.fieldTopPadding(8)
-            )
         }
     }
 }
