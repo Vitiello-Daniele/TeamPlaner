@@ -84,7 +84,7 @@ fun TeamScreen(
     onDutyRemove: (Duty) -> Unit,
     onDutyAssign: (TeamEvent, Duty, TeamMember) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
-    onFairPlanCreate: (Boolean) -> Unit,
+    onFairPlanCreate: (TeamEvent, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var teamView by remember { mutableStateOf<TeamView>(TeamView.List) }
@@ -306,7 +306,7 @@ private fun TeamDetailContent(
     onDutyRemove: (Duty) -> Unit,
     onDutyAssign: (TeamEvent, Duty, TeamMember) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
-    onFairPlanCreate: (Boolean) -> Unit,
+    onFairPlanCreate: (TeamEvent, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var tab by remember(team.id) { mutableStateOf(TeamDetailTab.Overview) }

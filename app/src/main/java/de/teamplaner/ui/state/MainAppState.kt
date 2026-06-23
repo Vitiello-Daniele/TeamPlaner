@@ -356,13 +356,21 @@ class MainAppState(
         saveData()
     }
 
-    fun createFairPlan(replaceExisting: Boolean) {
+    fun createFairPlan(replaceExisting: Boolean, eventId: String? = null) {
         val currentTeam = selectedTeam ?: return
-        val currentEvents = teamEvents(currentTeam.id)
+        val currentEvents = teamEvents(currentTeam.id).filter { event ->
+            eventId == null || event.id == eventId
+        }
         val currentDuties = teamDuties(currentTeam.id)
         val currentEventIds = currentEvents.map { it.id }.toSet()
         val otherAssignments = assignments.filterNot { it.eventId in currentEventIds }
-        val currentAssignments = teamAssignments(currentTeam.id)
+        val currentAssignments = if (replaceExisting) {
+            teamAssignments(currentTeam.id).filterNot { assignment ->
+                assignment.eventId in currentEventIds
+            }
+        } else {
+            teamAssignments(currentTeam.id)
+        }
 
         if (currentEvents.isNotEmpty() && currentDuties.isNotEmpty()) {
             assignments = otherAssignments + dutyAssignmentService.createFairAssignments(

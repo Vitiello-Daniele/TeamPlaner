@@ -349,6 +349,7 @@ private fun EventForm(
                 trimmedDate.isBlank() -> errorText = "Bitte ein Datum eingeben"
                 trimmedTime.isBlank() -> errorText = "Bitte eine Uhrzeit eingeben"
                 !isValidEventDate(trimmedDate) -> errorText = "Bitte ein gültiges Datum auswählen"
+                isPastEventDate(trimmedDate) -> errorText = "Das Datum darf nicht in der Vergangenheit liegen"
                 !isValidEventTime(trimmedTime) -> errorText = "Bitte eine gültige Uhrzeit auswählen"
                 selectedMembers.isEmpty() -> errorText = "Bitte mindestens einen Teilnehmer auswählen"
                 selectedDutyIds.isEmpty() -> errorText = "Bitte mindestens einen Dienst auswählen"
@@ -772,6 +773,14 @@ private fun formatDateMillis(millis: Long): String {
 
 private fun isValidEventDate(date: String): Boolean {
     return parseDateMillis(date) != null
+}
+
+private fun isPastEventDate(date: String): Boolean {
+    val selectedDate = runCatching {
+        LocalDate.parse(date, eventDateFormatter)
+    }.getOrNull() ?: return false
+
+    return selectedDate.isBefore(LocalDate.now())
 }
 
 private fun parseTime(time: String): Pair<Int, Int> {

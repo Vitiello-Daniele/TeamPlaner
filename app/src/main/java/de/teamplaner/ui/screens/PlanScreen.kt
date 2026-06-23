@@ -44,7 +44,7 @@ fun PlanScreen(
     canManageAssignments: Boolean,
     onDutyAssign: (TeamEvent, Duty, TeamMember) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
-    onFairPlanCreate: (Boolean) -> Unit,
+    onFairPlanCreate: (TeamEvent, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var planView by remember { mutableStateOf<PlanView>(PlanView.List) }
@@ -88,7 +88,7 @@ private fun PlanListScreen(
     currentMember: TeamMember?,
     onCreateClick: () -> Unit,
     onAssignmentEdit: (DutyAssignment) -> Unit,
-    onFairPlanCreate: (Boolean) -> Unit,
+    onFairPlanCreate: (TeamEvent, Boolean) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -138,18 +138,6 @@ private fun PlanListScreen(
             ) {
                 Text(text = "Dienst zuweisen")
             }
-            Button(
-                onClick = { onFairPlanCreate(false) },
-                modifier = defaultActionModifier(topPadding = 12)
-            ) {
-                Text(text = "Automatisch ergänzen")
-            }
-            OutlinedButton(
-                onClick = { onFairPlanCreate(true) },
-                modifier = defaultActionModifier(topPadding = 12)
-            ) {
-                Text(text = "Plan neu verteilen")
-            }
         }
 
         if (events.isEmpty()) {
@@ -170,6 +158,7 @@ private fun PlanListScreen(
                     currentMember = currentMember,
                     canManageAssignments = canManageAssignments,
                     onAssignmentEdit = onAssignmentEdit,
+                    onFairPlanCreate = onFairPlanCreate,
                     onAssignmentRemove = onAssignmentRemove
                 )
             }
@@ -323,6 +312,7 @@ private fun EventAssignmentCard(
     currentMember: TeamMember?,
     canManageAssignments: Boolean,
     onAssignmentEdit: (DutyAssignment) -> Unit,
+    onFairPlanCreate: (TeamEvent, Boolean) -> Unit,
     onAssignmentRemove: (DutyAssignment) -> Unit
 ) {
     val missingDuties = duties.filterNot { duty ->
@@ -386,6 +376,21 @@ private fun EventAssignmentCard(
                             Text(text = "Zuweisung löschen")
                         }
                     }
+                }
+            }
+
+            if (canManageAssignments) {
+                Button(
+                    onClick = { onFairPlanCreate(event, false) },
+                    modifier = defaultActionModifier(topPadding = 12)
+                ) {
+                    Text(text = "Fehlende Dienste zuweisen")
+                }
+                OutlinedButton(
+                    onClick = { onFairPlanCreate(event, true) },
+                    modifier = defaultActionModifier(topPadding = 8)
+                ) {
+                    Text(text = "Termin neu verteilen")
                 }
             }
         }

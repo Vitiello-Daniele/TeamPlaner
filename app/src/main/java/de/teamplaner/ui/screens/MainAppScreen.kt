@@ -322,14 +322,8 @@ fun MainAppScreen(
                     if (usesBackend && teamId != null) {
                         scope.launch {
                             isLoadingRemoteData = true
-                            teamApiClient.createEvent(token, teamId, event)
+                            teamApiClient.createEvent(token, teamId, event, shouldAutoAssign)
                                 .onSuccess {
-                                    if (shouldAutoAssign) {
-                                        teamApiClient.createFairPlan(token, teamId, false)
-                                            .onFailure { error ->
-                                                remoteError = error.message ?: "Plan konnte nicht erstellt werden"
-                                            }
-                                    }
                                     reloadRemoteTeams()
                                 }
                                 .onFailure {
@@ -387,12 +381,12 @@ fun MainAppScreen(
                         appState.removeAssignment(assignment)
                     }
                 },
-                onFairPlanCreate = { replaceExisting ->
+                onFairPlanCreate = { event, replaceExisting ->
                     val teamId = appState.selectedTeam?.id
                     if (usesBackend && teamId != null) {
-                        runTeamAction { teamApiClient.createFairPlan(token, teamId, replaceExisting) }
+                        runTeamAction { teamApiClient.createFairPlan(token, teamId, replaceExisting, event.id) }
                     } else {
-                        appState.createFairPlan(replaceExisting)
+                        appState.createFairPlan(replaceExisting, event.id)
                     }
                 },
                 modifier = Modifier

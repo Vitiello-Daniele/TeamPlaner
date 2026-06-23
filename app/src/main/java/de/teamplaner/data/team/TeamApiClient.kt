@@ -147,13 +147,19 @@ class TeamApiClient(
         ) {}
     }
 
-    suspend fun createEvent(token: String, teamId: String, event: TeamEvent): Result<Unit> {
+    suspend fun createEvent(
+        token: String,
+        teamId: String,
+        event: TeamEvent,
+        autoAssign: Boolean = false
+    ): Result<Unit> {
         return request(
             token = token,
             path = "/teams/$teamId/events",
             method = "POST",
             body = encodeEvent(event)
                 .put("participantIds", JSONArray(event.teilnahmen.map { it.memberId }))
+                .put("autoAssign", autoAssign)
         ) {}
     }
 
@@ -202,13 +208,19 @@ class TeamApiClient(
     suspend fun createFairPlan(
         token: String,
         teamId: String,
-        replaceExisting: Boolean
+        replaceExisting: Boolean,
+        eventId: String? = null
     ): Result<Unit> {
+        val body = JSONObject().put("replaceExisting", replaceExisting)
+        if (!eventId.isNullOrBlank()) {
+            body.put("eventId", eventId)
+        }
+
         return request(
             token = token,
             path = "/teams/$teamId/assignments/fair",
             method = "POST",
-            body = JSONObject().put("replaceExisting", replaceExisting)
+            body = body
         ) {}
     }
 

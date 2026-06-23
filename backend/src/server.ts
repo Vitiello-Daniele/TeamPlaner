@@ -88,6 +88,23 @@ function isValidEventDate(date: string): boolean {
     parsedDate.getUTCDate() === day;
 }
 
+function isPastEventDate(date: string): boolean {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
+
+  if (!match) {
+    return false;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const selectedDate = new Date(Date.UTC(year, month - 1, day));
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  return selectedDate < today;
+}
+
 function isValidEventTime(time: string): boolean {
   const match = /^(\d{2}):(\d{2})$/.exec(time);
 
@@ -367,6 +384,90 @@ function createFairAssignments(
   });
 
   return result;
+}
+
+async function saveFairAssignments(teamId: string, replaceExisting: boolean, eventId?: string) {
+  const members = await prisma.teamMember.findMany({
+    where: { teamId },
+    include: {
+      user: {
+        select: {
+          name: true
+        }
+      }
+    }
+  });
+  const events = await prisma.teamEvent.findMany({
+    where: {
+      teamId,
+      ...(eventId ? { id: eventId } : {})
+    },
+    include: {
+      dutyLinks: true
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
+  const targetEventIds = events.map((event) => event.id);
+  const teamEvents = await prisma.teamEvent.findMany({
+    where: { teamId },
+    select: { id: true }
+  });
+  const teamEventIds = teamEvents.map((event) => event.id);
+  const currentAssignments = await prisma.dutyAssignment.findMany({
+    where: {
+      eventId: {
+        in: teamEventIds
+      }
+    }
+  });
+  const assignmentsForFairness = replaceExisting
+    ? currentAssignments.filter((assignment) => !targetEventIds.includes(assignment.eventId))
+    : currentAssignments;
+  const nextAssignments = createFairAssignments(
+    events,
+    members,
+    assignmentsForFairness,
+    false
+  );
+
+  if (replaceExisting) {
+    await prisma.dutyAssignment.deleteMany({
+      where: {
+        eventId: {
+          in: targetEventIds
+        }
+      }
+    });
+  }
+
+  for (const assignment of nextAssignments) {
+    await prisma.dutyAssignment.upsert({
+      where: {
+        eventId_dutyId: {
+          eventId: assignment.eventId,
+          dutyId: assignment.dutyId
+        }
+      },
+      update: {
+        memberId: assignment.memberId
+      },
+      create: {
+        eventId: assignment.eventId,
+        dutyId: assignment.dutyId,
+        memberId: assignment.memberId
+      }
+    });
+  }
+
+  return prisma.dutyAssignment.findMany({
+    where: {
+      eventId: {
+        in: targetEventIds
+      }
+    }
+  });
 }
 
 app.get("/health", (_request, response) => {
@@ -1126,6 +1227,7 @@ app.post("/teams/:teamId/events", requireAuth, async (request: AuthRequest, resp
   const date = String(request.body.date ?? "").trim();
   const time = String(request.body.time ?? "").trim();
   const location = String(request.body.location ?? "").trim();
+  const autoAssign = Boolean(request.body.autoAssign);
   const dutyIds: string[] = Array.isArray(request.body.dutyIds) ? request.body.dutyIds.map(String) : [];
   const participantIds: string[] = Array.isArray(request.body.participantIds) ? request.body.participantIds.map(String) : [];
 
@@ -1146,6 +1248,11 @@ app.post("/teams/:teamId/events", requireAuth, async (request: AuthRequest, resp
 
   if (!isValidEventDate(date) || !isValidEventTime(time)) {
     response.status(400).json({ error: "Datum oder Uhrzeit ist ungültig" });
+    return;
+  }
+
+  if (isPastEventDate(date)) {
+    response.status(400).json({ error: "Das Datum darf nicht in der Vergangenheit liegen" });
     return;
   }
 
@@ -1171,6 +1278,10 @@ app.post("/teams/:teamId/events", requireAuth, async (request: AuthRequest, resp
     },
     include: eventInclude()
   });
+
+  if (autoAssign) {
+    await saveFairAssignments(teamId, false);
+  }
 
   response.status(201).json({ event: mapEvent(event) });
 });
@@ -1240,6 +1351,11 @@ app.patch("/events/:eventId", requireAuth, async (request: AuthRequest, response
 
     if (!isValidEventDate(date) || !isValidEventTime(time)) {
       response.status(400).json({ error: "Datum oder Uhrzeit ist ungültig" });
+      return;
+    }
+
+    if (isPastEventDate(date)) {
+      response.status(400).json({ error: "Das Datum darf nicht in der Vergangenheit liegen" });
       return;
     }
 
@@ -1412,6 +1528,7 @@ app.post("/teams/:teamId/assignments/fair", requireAuth, async (request: AuthReq
   const userId = request.userId;
   const teamId = routeParam(request.params.teamId);
   const replaceExisting = Boolean(request.body.replaceExisting);
+  const eventId = String(request.body.eventId ?? "").trim();
 
   if (!userId) {
     response.status(401).json({ error: "Nicht angemeldet" });
@@ -1423,76 +1540,7 @@ app.post("/teams/:teamId/assignments/fair", requireAuth, async (request: AuthReq
     return;
   }
 
-  const members = await prisma.teamMember.findMany({
-    where: { teamId },
-    include: {
-      user: {
-        select: {
-          name: true
-        }
-      }
-    }
-  });
-  const events = await prisma.teamEvent.findMany({
-    where: { teamId },
-    include: {
-      dutyLinks: true
-    },
-    orderBy: {
-      createdAt: "asc"
-    }
-  });
-  const eventIds = events.map((event) => event.id);
-  const currentAssignments = await prisma.dutyAssignment.findMany({
-    where: {
-      eventId: {
-        in: eventIds
-      }
-    }
-  });
-  const nextAssignments = createFairAssignments(
-    events,
-    members,
-    currentAssignments,
-    replaceExisting
-  );
-
-  if (replaceExisting) {
-    await prisma.dutyAssignment.deleteMany({
-      where: {
-        eventId: {
-          in: eventIds
-        }
-      }
-    });
-  }
-
-  for (const assignment of nextAssignments) {
-    await prisma.dutyAssignment.upsert({
-      where: {
-        eventId_dutyId: {
-          eventId: assignment.eventId,
-          dutyId: assignment.dutyId
-        }
-      },
-      update: {
-        memberId: assignment.memberId
-      },
-      create: {
-        eventId: assignment.eventId,
-        dutyId: assignment.dutyId,
-        memberId: assignment.memberId
-      }
-    });
-  }
-
-  const assignments = await prisma.dutyAssignment.findMany({
-    where: {
-      eventId: {
-        in: eventIds
-      }
-    }
-  });
+  const assignments = await saveFairAssignments(teamId, replaceExisting, eventId || undefined);
 
   response.json({ assignments: assignments.map(mapAssignment) });
 });
