@@ -462,7 +462,7 @@ private fun TeamDetailOverview(
                         if (trimmedName.isBlank()) {
                             memberError = "Bitte einen Namen eingeben"
                         } else if (selectedUserId.isBlank()) {
-                            memberError = "Bitte einen Nutzer aus der Liste auswÃ¤hlen"
+                            memberError = "Bitte einen Nutzer aus der Liste auswählen"
                         } else if (team.members.any { it.name == trimmedName }) {
                             memberError = "Dieses Mitglied ist schon im Team"
                         } else {
