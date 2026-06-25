@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import express, { type NextFunction, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
+import { isPastEventDate, isValidEventDate, isValidEventTime } from "./validation.js";
 
 dotenv.config();
 
@@ -69,53 +70,6 @@ function queryParam(value: unknown): string {
   }
 
   return String(value ?? "");
-}
-
-function isValidEventDate(date: string): boolean {
-  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
-
-  if (!match) {
-    return false;
-  }
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  const parsedDate = new Date(Date.UTC(year, month - 1, day));
-
-  return parsedDate.getUTCFullYear() === year &&
-    parsedDate.getUTCMonth() === month - 1 &&
-    parsedDate.getUTCDate() === day;
-}
-
-function isPastEventDate(date: string): boolean {
-  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(date);
-
-  if (!match) {
-    return false;
-  }
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  const selectedDate = new Date(Date.UTC(year, month - 1, day));
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
-  return selectedDate < today;
-}
-
-function isValidEventTime(time: string): boolean {
-  const match = /^(\d{2}):(\d{2})$/.exec(time);
-
-  if (!match) {
-    return false;
-  }
-
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-
-  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
 }
 
 function createInviteCode(teamName: string): string {
@@ -1246,6 +1200,7 @@ app.post("/teams/:teamId/events", requireAuth, async (request: AuthRequest, resp
     return;
   }
 
+  // Termin-Eingaben auch im Backend prüfen (nicht nur in der App)
   if (!isValidEventDate(date) || !isValidEventTime(time)) {
     response.status(400).json({ error: "Datum oder Uhrzeit ist ungültig" });
     return;
