@@ -26,27 +26,26 @@ private enum class HomeView {
     Loading,
     Start,
     Login,
-    Registration,
-    App
+    Registration
 }
 
+// Login-Oberfläche: Start, Login, Registrierung.
+// Bei erfolgreicher Anmeldung: onAuthenticated wechselt zur AppActivity.
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onAuthenticated: (token: String, name: String) -> Unit) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val sessionStore = remember(context) { AuthSessionStore(context) }
     val authApiClient = remember { AuthApiClient() }
     var currentView by remember { mutableStateOf(HomeView.Loading) }
-    var profileName by remember { mutableStateOf("") }
-    var sessionToken by remember { mutableStateOf("") }
 
+    // Sitzung speichern, dann weiter zur App
     fun openApp(session: AuthSession) {
         sessionStore.save(session)
-        profileName = session.user.name
-        sessionToken = session.token
-        currentView = HomeView.App
+        onAuthenticated(session.token, session.user.name)
     }
 
+    // gespeicherte Sitzung prüfen (Auto-Login)
     LaunchedEffect(Unit) {
         val savedSession = sessionStore.load()
         if (savedSession == null) {
@@ -54,9 +53,7 @@ fun HomeScreen() {
         } else {
             authApiClient.me(savedSession.token)
                 .onSuccess { user ->
-                    profileName = user.name
-                    sessionToken = savedSession.token
-                    currentView = HomeView.App
+                    onAuthenticated(savedSession.token, user.name)
                 }
                 .onFailure {
                     sessionStore.clear()
@@ -104,16 +101,6 @@ fun HomeScreen() {
                 },
                 onBackClick = { currentView = HomeView.Start }
             )
-            HomeView.App -> MainAppScreen(
-                name = profileName,
-                token = sessionToken,
-                onLogoutClick = {
-                    sessionStore.clear()
-                    profileName = ""
-                    sessionToken = ""
-                    currentView = HomeView.Start
-                }
-            )
         }
     }
 }
@@ -151,6 +138,6 @@ private fun StartContent(
 @Composable
 private fun HomeScreenPreview() {
     TeamPlanerTheme {
-        HomeScreen()
+        HomeScreen(onAuthenticated = { _, _ -> })
     }
 }

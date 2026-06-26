@@ -5,15 +5,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import de.teamplaner.ui.TeamPlanerApp
 
-// Einstiegspunkt der App.
-// Bewusst nur eine Activity: die einzelnen Ansichten sind Compose-Screens
-// (Navigation passiert in TeamPlanerApp), das entspricht dem aktuellen Android-Aufbau.
+// Login-Activity (Launcher): Start, Login, Registrierung.
+// Nach erfolgreicher Anmeldung: AppActivity starten, diese Activity schließen.
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // setContent verbindet die Activity mit der Compose-Oberfläche
         setContent {
-            TeamPlanerApp()
+            TeamPlanerApp(onAuthenticated = { token, name ->
+                startActivity(AppActivity.intent(this@MainActivity, token, name))
+                finish()
+            })
         }
     }
 }
